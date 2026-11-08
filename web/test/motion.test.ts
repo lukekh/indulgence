@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { C, seatPos } from '../../shared/constants';
-import { poseAt, along, pathLength, enterPath, departPaths, approachPoint, type PriestPlan } from '../src/motion';
+import { poseAt, along, pathLength, enterPath, departPaths, approachPoint, seatedAt, type PriestPlan } from '../src/motion';
 import { cameraFor, project, viewportFor } from '../src/view';
 
 const seat = { bay: 0, row: 1, half: 0, seat: 3 };
@@ -67,11 +67,21 @@ describe('poses over time', () => {
     expect(poseAt(plan, 1000 + walkMs + 10)).toMatchObject({ x: sx, y: sy, action: 'kneel', dir: 'up' });
   });
 
-  it('shows only its back until it leaves: every step in is facing the altar', () => {
+  it('comes up the aisle from behind, turns into the pew in profile, kneels facing the altar', () => {
     const plan: PriestPlan = { ...seat, state: 'Entering', since: 0 };
-    const walkMs = (pathLength(enterPath(seat)) / C.WALK_TILES_PER_S) * 1000;
-    for (let t = 0; t <= walkMs + 5000; t += 250) expect(poseAt(plan, t).dir).toBe('up');
-    // Leaving, it turns: along the pew toward the side aisle, and later toward the door.
+    const path = enterPath(seat);
+    const aisleMs = (Math.abs(path[1]![1] - path[0]![1]) / C.WALK_TILES_PER_S) * 1000;
+    const walkMs = (pathLength(path) / C.WALK_TILES_PER_S) * 1000;
+    for (let t = 0; t < aisleMs; t += 250) expect(poseAt(plan, t).dir).toBe('up');
+    // Left half: from the left side aisle, walking right along the pew.
+    for (let t = aisleMs + 100; t < walkMs; t += 250) expect(poseAt(plan, t)).toMatchObject({ dir: 'right', action: 'walk' });
+    expect(poseAt(plan, walkMs + 100)).toMatchObject({ dir: 'up', action: 'kneel' });
+    // Right half: from the right side aisle, walking left.
+    const right: PriestPlan = { ...seat, half: 1, state: 'Entering', since: 0 };
+    const rp = enterPath(right);
+    const rAisle = (Math.abs(rp[1]![1] - rp[0]![1]) / C.WALK_TILES_PER_S) * 1000;
+    expect(poseAt(right, rAisle + 200).dir).toBe('left');
+    // Leaving, it turns: along the pew in profile, and later toward the door.
     const leaving: PriestPlan = { ...seat, state: 'Departing', since: 0, candle: { arcade: 0, slot: 4 } };
     expect(poseAt(leaving, 500).dir).toBe('left');
     expect(poseAt(leaving, C.CANDLE_LIT_AFTER_MS + 2000).dir).toBe('down');
@@ -80,6 +90,17 @@ describe('poses over time', () => {
   it('keeps walking after the first prayer if it has not reached its seat yet', () => {
     const plan: PriestPlan = { ...seat, state: 'Praying', since: 1500, enteredAt: 1000 };
     expect(poseAt(plan, 1600).action).toBe('walk');
+  });
+
+  it('knows when it sits down (prayers are said only from then on)', () => {
+    const plan: PriestPlan = { ...seat, state: 'Praying', since: 1500, enteredAt: 1000, entryY: 40 };
+    const at = seatedAt(plan)!;
+    expect(at).toBe(1000 + (pathLength(enterPath(plan)) / C.WALK_TILES_PER_S) * 1000);
+    expect(poseAt(plan, at - 50).action).toBe('walk');
+    expect(poseAt(plan, at + 50).action).toBe('kneel');
+    // Already seated before we saw it; and no longer once it is leaving.
+    expect(seatedAt({ ...seat, state: 'Praying', since: 0 })).toBe(Number.NEGATIVE_INFINITY);
+    expect(seatedAt({ ...seat, state: 'Departing', since: 0 })).toBeUndefined();
   });
 
   it('walks slowly to the stand, kneels, lights the candle before lit_at, then leaves', () => {

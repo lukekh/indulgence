@@ -5,18 +5,18 @@ import { C, type CandleName, type VestmentName } from '../../shared/constants';
 import { DbConnection } from './module_bindings';
 import type { Priest, PrayerTick, Candle } from './module_bindings/types';
 import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Drawable, type Viewport, type Camera } from './view';
-import { poseAt, type PriestPlan, type Pose } from './motion';
-import { drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, type CandleView, type Light } from './scene';
+import { poseAt, seatedAt, type PriestPlan, type Pose } from './motion';
+import { AMBIENT, drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, type CandleView, type Light } from './scene';
 import { ditherFrame } from './dither';
 import { PriestSprites, vestmentName, thuriferHand, thuribleBowl } from './sprites';
 import { thurifersBetween, thuriferX, swing, NPC_LANE_Y, THURIFER_PRAYER } from './npc';
-import { closingCard, drawPrayer, hoverText, layoutPrayer, measureTag, nameTag, overlaps, type Rect } from './text';
+import { closingCard, cursorNote, drawLine, hoverText, loadFont, measureTag, nameTag, overlaps, placeLine, textSize, CRIMSON, type Rect, type TagStyle } from './text';
+import { drawKey, type KeyEntry, type KeyRow } from './key';
+import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
 import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, type ViewerGrant } from './net';
 
 const SLOT = C.PACING_SLOT_MS;
-/** How bright the nave is away from any candle (0 … 1). */
-const AMBIENT = 0.42;
 /** Height of a priest sprite above its feet, base px (LPC sheets are drawn at half size). */
 const HEAD = 30;
 const RETRY_FOR_MS = 120_000;
@@ -52,6 +52,14 @@ let sprites: PriestSprites | undefined;
 let subscribed = false;
 
 const muted = new Set<bigint>();
+/** Friends picked out from the key: crimson outline, crimson name. */
+const marked = new Set<bigint>();
+/** The key as last drawn, for hit testing. */
+let keyPanel: Rect | undefined;
+let keyRows: KeyRow[] = [];
+let keyHover: bigint | undefined;
+/** Each priest's prayer being recited and the one before, so a new prayer can take over. */
+const recitals = new Map<bigint, { key: string; cur?: Recital; prev?: Recital }>();
 let mouse: { x: number; y: number } | undefined;
 let hovered: { kind: 'priest'; id: bigint } | { kind: 'candle'; id: bigint } | { kind: 'thurifer'; id: number } | undefined;
 
@@ -74,6 +82,7 @@ async function start() {
   // grant is safely in sessionStorage.
   const ticket = takeTicketFromUrl();
   const spritesLoading = PriestSprites.load();
+  void loadFont();
   try {
     grant = ticket ? await redeemTicket(ticket) : loadGrant();
   } catch {
@@ -164,6 +173,8 @@ interface PriestView {
   pose: Pose;
   feet: [number, number];
   label?: string;
+  /** When it sat down in its pew (it prays only from then on); undefined once leaving. */
+  seated?: number;
 }
 
 function planOf(p: Priest, entryY: number): PriestPlan {
@@ -208,7 +219,7 @@ function frame() {
     base.height = rayLayer.height = baseH;
   }
   const toDisplay = (bx: number, by: number): [number, number] => [offX + bx * scale, offY + by * scale];
-  const textPx = Math.max(13, Math.round(scale * 5.5));
+  const textPx = textSize(scale);
 
   dctx.fillStyle = '#0a0909';
   dctx.fillRect(0, 0, display.width, display.height);
@@ -248,10 +259,11 @@ function frame() {
 
   const priests: PriestView[] = [];
   for (const p of conn.db.priest.iter()) {
-    const pose = poseAt(planOf(p, entryY), t);
+    const plan = planOf(p, entryY);
+    const pose = poseAt(plan, t);
     if (pose.action === 'gone') continue;
     const feet = project(cam, pose.x, pose.y);
-    const view: PriestView = { row: p, pose, feet, label: labels.get(p.priestId) };
+    const view: PriestView = { row: p, pose, feet, label: labels.get(p.priestId), seated: seatedAt(plan) };
     priests.push(view);
     const v: VestmentName = vestmentName(p.vestment.tag);
     drawables.push({ depth: pose.y, layer: LAYER.priest, x: pose.x, draw: (ctx: CanvasRenderingContext2D) => sprites!.draw(ctx, v, pose, feet[0], feet[1]) });
@@ -306,13 +318,21 @@ function frame() {
   ditherFrame(bctx, baseW, baseH, rctx.getImageData(0, 0, baseW, baseH).data);
   drawFixedFlames(bctx, cam, x0, x1, yMax, t);
   for (const [fx, fy, seed] of litFlames) drawFlame(bctx, fx, fy, t, seed);
+  // Friends picked out in the key, ringed in crimson after the dither so it stays crimson.
+  for (const p of priests) {
+    if (marked.has(p.row.priestId)) sprites!.mark(bctx, vestmentName(p.row.vestment.tag), p.pose, p.feet[0], p.feet[1], CRIMSON);
+  }
 
   dctx.imageSmoothingEnabled = false;
   dctx.drawImage(base, offX, offY, baseW * scale, baseH * scale);
 
   // --- hit testing ------------------------------------------------------------------
   hovered = undefined;
-  if (mouse) {
+  keyHover = undefined;
+  const inKey = !!mouse && !!keyPanel && mouse.x >= keyPanel.x && mouse.x <= keyPanel.x + keyPanel.w && mouse.y >= keyPanel.y && mouse.y <= keyPanel.y + keyPanel.h;
+  if (mouse && inKey) {
+    keyHover = keyRows.find((r) => mouse!.y >= r.rect.y && mouse!.y < r.rect.y + r.rect.h)?.id;
+  } else if (mouse) {
     const bx = (mouse.x - offX) / scale;
     const by = (mouse.y - offY) / scale;
     const byDepth = [...priests].sort((a, b) => b.pose.y - a.pose.y);
@@ -325,7 +345,8 @@ function frame() {
       if (hitC) hovered = { kind: 'candle', id: hitC.row.candleId };
     }
   }
-  display.style.cursor = hovered?.kind === 'priest' && hovered.id !== ownId ? 'pointer' : 'default';
+  const hoveredPriest = hovered?.kind === 'priest' ? hovered.id : undefined;
+  display.style.cursor = keyHover !== undefined || (hoveredPriest !== undefined && hoveredPriest !== ownId) ? 'pointer' : 'default';
 
   // --- words over the scene ------------------------------------------------------------
   const ownPos = own ? [own.x, own.y] : [grant!.px, C.ROW_Y[0]!];
@@ -335,15 +356,18 @@ function frame() {
     .slice(0, STRANGER_PRAYERS)
     .map((p) => p.row.priestId);
 
-  // Names first (yours, then mutuals), nudged upward until they stop colliding.
+  // Names: yours always; anyone else's only while hovered, or in crimson once picked out
+  // in the key. Nudged upward until they stop colliding.
+  const tagStyle = (p: PriestView): TagStyle | undefined =>
+    p.row.priestId === ownId ? 'own' : marked.has(p.row.priestId) ? 'marked' : p.row.priestId === hoveredPriest ? 'plain' : undefined;
+  const tagOrder = (p: PriestView) => (p.row.priestId === ownId ? 0 : p.row.priestId === hoveredPriest ? 1 : 2);
   const placed: Rect[] = [];
   const anchors = new Map<bigint, [number, number]>();
-  const tagged = priests.filter((p) => p.label || p.row.priestId === ownId).sort((a, b) => Number(b.row.priestId === ownId) - Number(a.row.priestId === ownId));
   const tagPx = Math.round(textPx * 0.9);
-  for (const p of tagged) {
+  for (const p of priests.filter((x) => tagStyle(x)).sort((a, b) => tagOrder(a) - tagOrder(b))) {
     const [dx, dy0] = toDisplay(p.feet[0], p.feet[1] - HEAD);
-    const mine = p.row.priestId === ownId;
-    const text = p.label ?? 'you';
+    const style = tagStyle(p)!;
+    const text = style === 'own' ? 'you' : (p.label ?? `a ${vestmentName(p.row.vestment.tag)}`);
     let dy = dy0 - textPx * 0.2;
     let r = measureTag(dctx, dx, dy, text, tagPx);
     for (let k = 0; k < 4 && placed.some((q) => overlaps(q, r)); k++) {
@@ -352,56 +376,90 @@ function frame() {
     }
     placed.push(r);
     anchors.set(p.row.priestId, [dx, r.y]);
-    nameTag(dctx, dx, dy, text, tagPx, mine, t);
+    nameTag(dctx, dx, dy, text, tagPx, style, t);
   }
 
-  // Prayers, written over the scene: yours, mutuals', then a couple of nearby strangers'.
-  const rank = (p: PriestView) => (p.row.priestId === ownId ? 0 : p.label ? 1 : 2);
+  // Prayers, a sentence at a time, once a priest has sat down: yours, your friends', a
+  // couple of nearby strangers' and whoever is under the mouse.
+  const present = new Set(priests.map((p) => p.row.priestId));
+  for (const id of recitals.keys()) if (!present.has(id)) recitals.delete(id);
+  const rank = (p: PriestView) => (p.row.priestId === ownId ? 0 : p.row.priestId === hoveredPriest ? 1 : p.label ? 2 : 3);
   for (const p of [...priests].sort((a, b) => rank(a) - rank(b))) {
-    const mine = p.row.priestId === ownId;
-    if (muted.has(p.row.priestId) || p.row.state.tag === 'Departing') continue;
-    if (!(mine || p.label || strangers.includes(p.row.priestId))) continue;
-    const tick = conn.db.prayerTick.priestId.find(p.row.priestId);
+    const id = p.row.priestId;
+    const mine = id === ownId;
+    if (muted.has(id) || p.seated === undefined || t < p.seated) continue;
+    if (!(mine || p.label || strangers.includes(id) || id === hoveredPriest)) continue;
+    const tick = conn.db.prayerTick.priestId.find(id);
     if (!tick) continue;
-    const elapsed = t - ms(tick.at);
-    if (elapsed < 0 || elapsed > SLOT) continue;
-    const prayer = currentPrayer(p.row, tick)!;
-    const shown = prayer.text.slice(0, Math.ceil(prayer.text.length * Math.min(1, elapsed / (SLOT * 0.8))));
-    const [ax, ay] = anchors.get(p.row.priestId) ?? toDisplay(p.feet[0], p.feet[1] - HEAD);
-    const layout = layoutPrayer(dctx, ax, ay - textPx * 0.4, shown, mine ? textPx : Math.round(textPx * 0.92), mine ? 4 : 2, mine);
-    if (!layout) continue;
-    for (let k = 0; k < 3 && placed.some((q) => overlaps(q, layout.rect)); k++) layout.rect.y -= layout.rect.h * 0.6;
-    if (placed.some((q) => overlaps(q, layout.rect)) && !mine) continue;
-    placed.push(layout.rect);
-    const fade = Math.max(0, Math.min(1, elapsed / 500, (SLOT - elapsed) / 1500));
-    drawPrayer(dctx, layout, t, fade);
+    const key = `${tick.seq}:${ms(tick.at)}`;
+    let mem = recitals.get(id);
+    if (!mem || mem.key !== key) {
+      mem = { key, prev: mem?.cur };
+      recitals.set(id, mem);
+    }
+    mem.cur = schedule(currentPrayer(p.row, tick)!.text, Math.max(ms(tick.at), p.seated), SLOT);
+    const spoken = spokenAt(mem.cur, mem.prev, t);
+    if (!spoken.current) continue;
+
+    const px = mine ? textPx : Math.round(textPx * 0.94);
+    const [ax, ay] = anchors.get(id) ?? toDisplay(p.feet[0], p.feet[1] - HEAD);
+    const cur = placeLine(dctx, spoken.current.line.text, ax, ay - textPx * 0.25, px, mine);
+    const prev = spoken.previous ? placeLine(dctx, spoken.previous.text, ax, cur.y, px, mine) : undefined;
+    const block = (): Rect => (prev ? { x: Math.min(cur.x, prev.x), y: prev.y, w: Math.max(cur.x + cur.w, prev.x + prev.w) - Math.min(cur.x, prev.x), h: cur.y + cur.h - prev.y } : cur);
+    for (let k = 0; k < 3 && placed.some((q) => overlaps(q, block())); k++) {
+      cur.y -= cur.h;
+      if (prev) prev.y -= cur.h;
+    }
+    if (placed.some((q) => overlaps(q, block())) && !mine) continue;
+    placed.push(block());
+
+    drawLine(dctx, cur, spoken.current.shown, mine, t, spoken.current.alpha);
+    if (prev && spoken.previous) {
+      // The finished line rises above the new one at half opacity, sways a couple of
+      // pixels as it drifts off, and is gone after LINGER_MS.
+      const age = t - spoken.previous.since;
+      const rise = Math.min(1, age / 220);
+      const sway = Math.sin((age / 1000) * Math.PI * 1.3) * scale * 1.5;
+      const drift = (-age / LINGER_MS) * scale * 2;
+      const out = Math.max(0, Math.min(1, (LINGER_MS - age) / 350));
+      drawLine(dctx, prev, spoken.previous.text, mine, t, spoken.previous.alpha * out, sway, (cur.y - prev.y) * (1 - rise) + drift);
+    }
   }
 
   if (hovered && mouse) {
+    const notePx = Math.round(textPx * 0.8);
     if (hovered.kind === 'priest') {
       const p = priests.find((x) => x.row.priestId === hovered!.id)!;
-      const mine = p.row.priestId === ownId;
-      const v = vestmentName(p.row.vestment.tag);
-      const title = mine ? `${p.label ?? 'you'} (you)` : (p.label ?? `a ${v}`);
-      const tick = conn.db.prayerTick.priestId.find(p.row.priestId);
-      const prayer = muted.has(p.row.priestId) ? undefined : currentPrayer(p.row, tick);
-      const body = p.row.state.tag === 'Departing' ? 'Going to light a candle.' : (prayer?.text ?? 'Kneeling in silence.');
-      const footer = mine ? '' : muted.has(p.row.priestId) ? 'muted · click to unmute' : 'click to mute';
-      hoverText(dctx, mouse.x, mouse.y, title, body, footer, textPx, mine, t);
+      if (p.row.priestId !== ownId) {
+        const notes: string[] = [];
+        if (p.row.state.tag === 'Departing') notes.push(p.row.candleId !== 0n ? 'going to light a candle' : 'leaving');
+        else if (p.seated === undefined || t < p.seated) notes.push('on the way to a pew');
+        notes.push(muted.has(p.row.priestId) ? 'muted · click to unmute' : 'click to mute');
+        cursorNote(dctx, mouse.x, mouse.y, notes, notePx);
+      }
     } else if (hovered.kind === 'thurifer') {
-      hoverText(dctx, mouse.x, mouse.y, 'the thurifer', THURIFER_PRAYER, 'passes every two minutes', textPx, false, t);
+      hoverText(dctx, mouse.x, mouse.y, 'the thurifer', THURIFER_PRAYER, 'passes every two minutes', notePx);
     } else {
       const c = candles.find((x) => x.row.candleId === hovered!.id)!;
       const lit = c.litAt <= t;
       const hours = Math.max(0, Math.round((c.expiresAt - t) / 3_600_000));
-      hoverText(dctx, mouse.x, mouse.y, c.row.label, lit ? `A ${c.size}, burning for about ${hours} more hour${hours === 1 ? '' : 's'}.` : 'Being lit…', '', textPx, false, t);
+      hoverText(dctx, mouse.x, mouse.y, c.row.label, lit ? `A ${c.size}, burning for about ${hours} more hour${hours === 1 ? '' : 's'}.` : 'Being lit…', '', notePx);
     }
   }
+
+  // --- the key: friends in the cathedral with you --------------------------------------
+  const keyEntries: KeyEntry[] = priests
+    .filter((p) => p.label && p.row.priestId !== ownId)
+    .map((p) => ({ id: p.row.priestId, name: p.label!, leaving: p.row.state.tag === 'Departing', marked: marked.has(p.row.priestId) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const drawnKey = drawKey(dctx, keyEntries, Math.round(textPx * 0.85), keyHover);
+  keyPanel = drawnKey.panel;
+  keyRows = drawnKey.rows;
 
   // --- status and closing ---------------------------------------------------------------
   if (phase === 'reconnecting' && disconnectedAt !== undefined) {
     if (Date.now() - disconnectedAt > RETRY_FOR_MS) closeWith('Ite, missa est', 'The connection to the cathedral was lost.');
-    nameTag(dctx, display.width / 2, display.height - textPx, 'reconnecting…', textPx, false, t);
+    nameTag(dctx, display.width / 2, display.height - textPx, 'reconnecting…', textPx, 'plain', t);
   }
   if (phase === 'closing' || phase === 'closed') {
     const a = Math.min(1, (Date.now() - closingSince) / 2000);
@@ -457,6 +515,11 @@ display.addEventListener('mousemove', (e) => {
 });
 display.addEventListener('mouseleave', () => (mouse = undefined));
 display.addEventListener('click', () => {
+  if (keyHover !== undefined) {
+    if (marked.has(keyHover)) marked.delete(keyHover);
+    else marked.add(keyHover);
+    return;
+  }
   if (hovered?.kind !== 'priest' || hovered.id === ownId) return;
   if (muted.has(hovered.id)) muted.delete(hovered.id);
   else muted.add(hovered.id);

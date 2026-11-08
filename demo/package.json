@@ -8,6 +8,7 @@
     "gif": "tsx record.ts --gif",
     "live": "tsx record.ts --live",
     "sandbox": "tsx record.ts --sandbox",
+    "assets": "tsx render-assets.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

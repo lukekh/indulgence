@@ -1,0 +1,13 @@
+{
+  "name": "indulgence",
+  "private": true,
+  "description": "Convenience scripts from the repo root. Each package (gate/, web/, demo/) has its own package.json and node_modules.",
+  "scripts": {
+    "install:all": "npm --prefix gate install && npm --prefix web install && npm --prefix demo install",
+    "sandbox": "npm --prefix demo run sandbox",
+    "live": "npm --prefix demo run live",
+    "gif": "npm --prefix demo run gif",
+    "assets": "npm --prefix demo run assets",
+    "test": "npm --prefix gate test && npm --prefix web test"
+  }
+}

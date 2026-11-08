@@ -18,6 +18,8 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { startCathedral, type Cathedral, type Layout } from './scenario.js';
 import { bayCentreX, cameraFor, project, viewportFor, visibleTiles } from '../web/src/view.js';
 import { candleDrawable } from '../web/src/scene.js';
+import { keyRowCentre } from '../web/src/key.js';
+import { textSize } from '../web/src/text.js';
 import { nextPassAt, thurifersBetween } from '../web/src/npc.js';
 import { C, type CandleName } from '../shared/constants.js';
 
@@ -27,9 +29,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const OUT = path.resolve(process.env.DEMO_OUT ?? path.join(HERE, 'out', 'indulgence-demo.gif'));
 const FPS = Number(process.env.DEMO_FPS ?? 8);
-/** Playback speed of the (slow, minute-long) departure in the GIF. */
-const FAST = Number(process.env.DEMO_DEPART_SPEED ?? 2);
-// 1440 × 900 renders the cathedral at 3× (its base canvas is 480 × 270); 1000 × 660 gives 2×.
+/** Playback speed of the slow walks (in to the pew, out past the stand) in the GIF. */
+const FAST = Number(process.env.DEMO_DEPART_SPEED ?? 3);
+/** Real time spent watching your priest pray once it has sat down. */
+const SEATED_MS = Number(process.env.DEMO_SEATED_MS ?? 21_000);
+// 1440 × 900 renders the cathedral at 2× (its base canvas is about 640 × 360); 1920 × 1080 gives 3×.
 const WIDTH = Number(process.env.DEMO_WIDTH ?? 1440);
 const HEIGHT = Number(process.env.DEMO_HEIGHT ?? 900);
 const INTENTION = process.env.DEMO_INTENTION ?? 'for the soul of my cat';
@@ -100,6 +104,11 @@ function aimer(box: { x: number; y: number; width: number; height: number }, own
   const cam = cameraFor(bayCentreX(own.x), vp);
   const toPage = (bx: number, by: number) => ({ x: box.x + offX + bx * scale, y: box.y + offY + by * scale });
   return {
+    /** The i-th friend in the key (names sorted), where a click picks them out. */
+    keyRow: (i: number) => {
+      const c = keyRowCentre(box.width, Math.round(textSize(scale) * 0.85), i);
+      return { x: box.x + c.x, y: box.y + c.y };
+    },
     // Aim at the upper body: lower down, the priest kneeling in front can overlap.
     priest: (p: { x: number; y: number }) => {
       const [fx, fy] = project(cam, p.x, p.y);
@@ -226,7 +235,7 @@ async function main() {
     let departed = false;
     const praying = (async () => {
       await sleep(3500);
-      for (let i = 0; i < 3 && !departed; i++) {
+      for (let i = 0; !departed; i++) {
         const r = await cathedral!.pray(i);
         await page.evaluate((x) => (window as any).stage.prayed(x), r).catch(() => {});
         if (r.done) break;
@@ -263,18 +272,30 @@ async function main() {
         await sleep(ms);
       };
       say('scene: friends, their votives and the thurifer');
-      await hover(layout.friends.Hildegard && aim.priest(layout.friends.Hildegard), 3400);
+      // Names show only under the mouse...
+      await hover(layout.friends.Hildegard && aim.priest(layout.friends.Hildegard), 3000);
+      // ...or in crimson for a friend picked out in the key.
+      const inKey = Object.keys(layout.friends).sort((a, b) => a.localeCompare(b));
+      const pick = inKey.indexOf('Anselm');
+      if (pick >= 0) {
+        await hover(aim.keyRow(pick), 900);
+        await page.mouse.click(aim.keyRow(pick).x, aim.keyRow(pick).y);
+        await sleep(2600);
+      }
       await hover(layout.candles.Bede && aim.candle(layout.candles.Bede), 2700);
       await hover(layout.candles.Clare && aim.candle(layout.candles.Clare), 2700);
       await hover(aim.thurifer(), 3200);
-      await hover({ x: box.x + box.width - 20, y: box.y + 40 }, 2500);
+      await hover({ x: box.x + 40, y: box.y + 40 }, 1500);
     }
 
-    // Walking in at a solemn 1 tile/s takes most of a minute; leave only once seated.
-    // The rest of the walk plays at the departure's speed in the GIF.
+    // Walking in at a solemn 1 tile/s takes most of a minute, and a priest prays only once
+    // it has sat down. The rest of the walk plays fast in the GIF; then, in real time, the
+    // prayer is recited a sentence at a time.
     const waitFrom = Date.now();
-    await sleep(Math.max(0, seatedAt + 6000 - Date.now()));
-    if (Date.now() - waitFrom > 3000) fast.push([waitFrom, Date.now() - 3000]);
+    await sleep(Math.max(0, seatedAt - 2500 - Date.now()));
+    if (Date.now() - waitFrom > 1000) fast.push([waitFrom, Date.now()]);
+    say('scene: your priest sits and prays');
+    await sleep(Math.max(0, seatedAt + SEATED_MS - Date.now()));
     say('scene: depart, light a candle, Ite, missa est');
     const fastFrom = Date.now();
     departed = true;

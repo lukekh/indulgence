@@ -10,7 +10,11 @@ import { slotPoint } from './motion';
 
 const BAY_W = C.BAY_W;
 
-const COL = {
+/** How bright the nave is away from any candle (0 … 1). */
+export const AMBIENT = 0.42;
+
+/** The scene's greys, before lighting and the dither. */
+export const COL = {
   floor: '#2c2a28',
   joint: '#1d1c1b',
   arcadeFloor: '#232120',

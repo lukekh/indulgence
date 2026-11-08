@@ -3,9 +3,9 @@
 
 `/indulgence` is a satirical Claude Code plugin. It spends your own model tokens on Latin prayers, which a pixel-art priest recites in a shared cathedral that goes on forever sideways. When the budget runs out or you leave, the priest lights a candle and walks out. The candle burns for about a day.
 
-![A /indulgence session: the gate boots and /indulgence runs; then, looking straight up a dark, dithered nave toward the altar, your priest walks slowly up the side aisle to kneel near three friends while a thurifer swings incense across the front and a coloured shaft of light falls on the pews; finally it lights a candle and leaves](demo/out/indulgence-demo.gif)
+![A /indulgence session: the gate boots and /indulgence runs; then, looking straight up a dark, dithered nave toward the altar, your priest walks slowly up the side aisle and along its pew to kneel near three friends while a thurifer swings incense across the front and a coloured shaft of light falls on the pews; finally it lights a candle and leaves](demo/out/indulgence-demo.gif)
 
-Regenerate this recording with `cd demo && npm run gif` (see [`demo/`](demo)).
+Regenerate this recording with `npm run gif` (see [`demo/`](demo)). Sheets of every asset (the cathedral, altar, pews, votive stand, each priest and the thurifer, in game and raw) are in [`demo/out/assets/`](demo/out/assets); regenerate them with `npm run assets`.
 
 The design is in [`indulgence — Technical Spec.md`](indulgence%20—%20Technical%20Spec.md). This repository implements it with SpacetimeDB Maincloud as the database. [Differences from the spec](#differences-from-the-spec) lists where it departs and why.
 
@@ -33,12 +33,15 @@ The design is in [`indulgence — Technical Spec.md`](indulgence%20—%20Technic
 
 Prerequisites: Node 22+, the [SpacetimeDB CLI](https://spacetimedb.com/install) (2.14), and Rust with the `wasm32-unknown-unknown` target. `module/rust-toolchain.toml` pins Rust 1.99, the minimum for `spacetimedb` 2.14 is 1.97, and rustup installs the pin automatically without touching your default toolchain.
 
+From the repo root (the demo scripts run in `demo/`, so `cd demo` first works too):
+
 ```sh
-(cd gate && npm install) && (cd web && npm install) && (cd demo && npm install)
-cd demo
-npm run sandbox   # fresh local SpacetimeDB + module + viewer + gate, seeded with friends; prints your viewer link
-npm run live      # the scripted demo in a visible Chrome window
-npm run gif       # the scripted demo, recorded to demo/out/indulgence-demo.gif
+npm run install:all   # npm install in gate/, web/ and demo/
+npm run sandbox       # fresh local SpacetimeDB + module + viewer + gate, seeded with friends; prints your viewer link
+npm run live          # the scripted demo in a visible Chrome window
+npm run gif           # the scripted demo, recorded to demo/out/indulgence-demo.gif
+npm run assets        # asset sheets, rendered to demo/out/assets/*.jpg
+npm test              # gate and web unit tests
 ```
 
 The demo needs no GitHub OAuth App or Claude Code. To run the real gate locally, see `gate/.env.example`. Use `GATE_PUBLIC_URL=http://localhost:8787`, and point the plugin at it with `INDULGENCE_GATE_URL=http://localhost:8787 claude`.
@@ -87,8 +90,9 @@ How the spec's acceptance checks are covered:
 - **Straight up the nave.** The camera stands at the back of the cathedral looking toward the altar. Pews are horizontal and parallel, stacked up the screen, with your bay's altar at the very top. The view repeats without end: neighbouring bays continue to the left and right, and the pews run on past the bottom of the screen, so you never see where the cathedral begins.
 - **Obra Dinn–style dither.** The scene is drawn in plain greys with hard ink outlines. It is then candlelit and reduced, pixel by pixel, to four dark greys with a 4 × 4 Bayer ordered dither, like an 8-bit game. The pixel-art canvas is about 640 × 360, scaled up by a whole number to fill the window.
 - **Dark, with colour only from the vault.** The only colour is the occasional shaft of stained-glass light (ruby, cobalt, amber or emerald) falling at a slant onto the pews and floor. Elsewhere there is dim light from a candle on every pew end, the altar candles and the votive stands.
-- **Priests from behind.** Priests come up the side aisles from below the screen and side-step into their pews, seen only from behind, then kneel facing the altar. They turn only when they leave: along the pew, to the votive stand in the arcade, where they kneel, light a candle and walk back down out of view toward the camera. They walk at a solemn 1 tile per second. Each sprite has a pale outline so it reads against the dark.
-- **Prayers written over the scene**, with no bubbles. They are white for everyone except your own priest, which speaks in gold with the TuringOS shimmer: a pale band sweeping through the gold every 3.4 s over a soft gold glow. Names float above priests the same way.
+- **Priests from behind.** Priests come up the side aisles from below the screen, seen from behind, turn into their pews and walk along them in profile, then turn to kneel facing the altar. Leaving, they walk back along the pew in profile, go to the votive stand in the arcade, kneel, light a candle and walk back down out of view toward the camera. They walk at a solemn 1 tile per second. Each sprite has a pale outline so it reads against the dark.
+- **Prayers written over the scene**, with no bubbles, in Grenze Gotisch, a readable blackletter. A priest starts reciting only once it has sat down in its pew. The prayer is typed one sentence per line: the model's own line breaks are ignored, and only a full stop starts a new line. When a new line begins, the one before it rises above it at 50% opacity, sways a couple of pixels as it drifts off, and is gone after 2 s, or straight away if a third line starts first. Prayers are white for everyone except your own priest, which speaks in gold with the TuringOS shimmer: a pale band sweeping through the gold every 3.4 s over a soft gold glow.
+- **Names on hover, and the key.** Other priests' names appear only while the mouse is over them; your own priest is always marked "you". A small key at the top right lists the friends (mutuals) currently in the cathedral. Click a name there to pick that friend out: a crimson outline round their priest and their name over its head in crimson, until you click it again. Clicking a priest in the scene still mutes or unmutes it.
 - **The thurifer.** A server in cassock and surplice walks across the front of the nave, swinging a smoking thurible. Its position is a pure function of server time, so every viewer sees the same procession, and it passes any spot every two minutes.
 - **Sprites** are simple robes composed from the Universal LPC generator by `web/scripts/build-sprites.py` (see [`web/public/sprites/README.md`](web/public/sprites/README.md)).
 
@@ -109,4 +113,4 @@ How the spec's acceptance checks are covered:
 
 ## Licence
 
-MIT for the code. Bundled data: canned prayers and the Vulgate wordlist are in the public domain, and the denylist derives from LDNOOBW (CC BY 4.0). LPC sprites, once added, carry their own licences (see `web/public/sprites/`).
+MIT for the code. Bundled data: canned prayers and the Vulgate wordlist are in the public domain, and the denylist derives from LDNOOBW (CC BY 4.0). LPC sprites carry their own licences (see `web/public/sprites/`). The Grenze Gotisch font is under the SIL Open Font License (`web/public/fonts/OFL.txt`).

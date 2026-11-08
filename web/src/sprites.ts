@@ -36,6 +36,9 @@ export class PriestSprites {
   private sheets = new Map<SheetName, HTMLCanvasElement>();
   /** Each sheet as a flat pale silhouette, drawn offset by a pixel to outline the figure. */
   private outlines = new Map<SheetName, HTMLCanvasElement>();
+  /** Silhouettes in the marking colour, made when first needed. */
+  private marks = new Map<string, HTMLCanvasElement>();
+  private scratch?: HTMLCanvasElement;
 
   static async load(base = '/sprites'): Promise<PriestSprites> {
     const s = new PriestSprites();
@@ -90,6 +93,37 @@ export class PriestSprites {
       for (const [dx, dy] of OUTLINE_OFFSETS) drawFromSheet(ctx, outline, pose, fx + dx, fy + dy);
       drawFromSheet(ctx, sheet, pose, fx, fy);
     } else drawPlaceholder(ctx, v, pose, fx, fy);
+    ctx.restore();
+  }
+
+  /**
+   * A one-pixel ring of `colour` round a priest's figure. Drawn after the dither, over the
+   * figure already there, so it keeps its colour.
+   */
+  mark(ctx: CanvasRenderingContext2D, v: VestmentName, pose: Pose, fx: number, fy: number, colour: string) {
+    const sheet = this.sheets.get(v);
+    if (!sheet || pose.action === 'gone' || pose.alpha <= 0) return;
+    const key = `${v}:${colour}`;
+    let ring = this.marks.get(key);
+    if (!ring) {
+      ring = silhouette(sheet, colour);
+      this.marks.set(key, ring);
+    }
+    const f = FRAME * SPRITE_SCALE;
+    const s = (this.scratch ??= document.createElement('canvas'));
+    s.width = f + 4;
+    s.height = f + 4;
+    const sc = s.getContext('2d')!;
+    // Feet placed so the frame lands at (2, 2) on the scratch canvas.
+    const lx = f / 2 + 2;
+    const ly = f - 2 + 2;
+    for (const [dx, dy] of RING_OFFSETS) drawFromSheet(sc, ring, pose, lx + dx, ly + dy);
+    sc.globalCompositeOperation = 'destination-out';
+    drawFromSheet(sc, sheet, pose, lx, ly);
+    sc.globalCompositeOperation = 'source-over';
+    ctx.save();
+    ctx.globalAlpha = pose.alpha;
+    ctx.drawImage(s, Math.round(fx - f / 2) - 2, Math.round(fy - f + 2) - 2);
     ctx.restore();
   }
 }
@@ -247,6 +281,12 @@ const OUTLINE_OFFSETS: [number, number][] = [
   [-1, 0],
   [1, 0],
   [0, -1],
+];
+const RING_OFFSETS: [number, number][] = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
 ];
 
 /** The sheet's shape filled with one colour. */

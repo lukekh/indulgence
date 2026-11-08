@@ -3,10 +3,11 @@
 // WALK_TILES_PER_S (1 tile per second).
 //
 // The camera looks from the back of the nave toward the altar, and the nave goes on below
-// the bottom of the screen. A priest comes up the side aisle on its half from out of view
-// and side-steps into its pew, all of it facing away from the camera, so only its back is
-// seen. It turns around only when it leaves: back along its pew to the side aisle, to the
-// votive stand beside the aisle, kneels, lights its candle, and walks back down out of view.
+// the bottom of the screen. A priest comes up the side aisle on its half from out of view,
+// seen from behind, turns into its pew and walks along it in profile, then turns to kneel
+// facing the altar. Leaving, it walks back along its pew in profile to the side aisle, to
+// the votive stand beside the aisle, kneels, lights its candle, and walks back down out of
+// view, toward the camera.
 
 import { C, seatPos, standX } from '../../shared/constants';
 
@@ -124,6 +125,18 @@ export function departPaths(p: PriestPlan): { toStand: Pt[]; toDoor: Pt[]; appro
   };
 }
 
+/**
+ * When a priest coming in reaches its pew and kneels (ms, server clock): it says nothing
+ * before then. -Infinity if it was already seated when we first saw it; undefined once it
+ * has begun to leave.
+ */
+export function seatedAt(p: PriestPlan): number | undefined {
+  if (p.state === 'Departing') return undefined;
+  const start = p.enteredAt ?? (p.state === 'Entering' ? p.since : undefined);
+  if (start === undefined) return Number.NEGATIVE_INFINITY;
+  return start + (pathLength(enterPath(p)) / SPEED) * 1000;
+}
+
 /** Where a priest is, which way it faces and what it is doing at server time `now`. */
 export function poseAt(p: PriestPlan, now: number): Pose {
   const [sx, sy] = seatPos(p.bay, p.row, p.half, p.seat);
@@ -137,8 +150,8 @@ export function poseAt(p: PriestPlan, now: number): Pose {
     const t = Math.max(0, now - start) / 1000;
     const a = along(path, t * SPEED);
     if (a.done) return kneel(t - pathLength(path) / SPEED);
-    // Coming in, only the back is ever seen: sideways steps are side-steps.
-    return { x: a.p[0], y: a.p[1], dir: 'up', action: 'walk', t, alpha: 1 };
+    // Up the aisle from behind; along the pew in profile.
+    return { x: a.p[0], y: a.p[1], dir: a.dir, action: 'walk', t, alpha: 1 };
   }
 
   const t = Math.max(0, now - p.since);
