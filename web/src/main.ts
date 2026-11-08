@@ -314,7 +314,7 @@ function frame() {
     lights.push({ x: bx, y: by, r: 18, power: 0.3 });
   }
   applyLighting(bctx, baseW, baseH, lights, AMBIENT);
-  drawRays(rctx, cam, x0, x1, baseW, baseH, Math.floor(t / 2000) * 2000);
+  drawRays(rctx, cam, x0, x1, baseW, baseH, Math.floor(t / 2000) * 2000, yMax);
   ditherFrame(bctx, baseW, baseH, rctx.getImageData(0, 0, baseW, baseH).data);
   drawFixedFlames(bctx, cam, x0, x1, yMax, t);
   for (const [fx, fy, seed] of litFlames) drawFlame(bctx, fx, fy, t, seed);

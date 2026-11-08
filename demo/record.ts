@@ -327,7 +327,7 @@ async function main() {
           '-f', 'concat',
           '-safe', '0',
           '-i', path.join(tmp, 'frames.txt'),
-          '-vf', `fps=${FPS},split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
+          '-vf', `fps=${FPS},split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
           '-loop', '0',
           OUT,
         ],

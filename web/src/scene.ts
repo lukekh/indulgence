@@ -311,59 +311,135 @@ export function applyLighting(ctx: CanvasRenderingContext2D, width: number, heig
 // Coloured shafts of light from the vault
 // ---------------------------------------------------------------------------
 
-const RAY_COLOURS: [number, number, number][] = [
-  [196, 46, 42], // ruby
-  [52, 92, 210], // cobalt
-  [214, 160, 46], // amber
-  [58, 150, 92], // emerald
+/** Stained glass: rose pink, orange, green and blue. */
+export const GLASS: [number, number, number][] = [
+  [232, 98, 162],
+  [238, 142, 52],
+  [72, 188, 112],
+  [66, 130, 232],
 ];
+/** Rows of pews one pool of window light covers, and the rows of shadow between pools. */
+export const GLOW_ROWS = 3.5;
+export const GLOW_GAP_ROWS = 5;
+/** Strength (dither coverage) of the light where it lies on the floor, and of its rays. */
+export const GLOW_FLOOR_ALPHA = 0.14;
+export const GLOW_BEAM_ALPHA = 0.03;
+/** Width of one band of colour in the pool, base px: the glass repeats across it. */
+const GLASS_BAND_PX = 26;
+/** How high the windows are above the floor, base px, and how far the beam leans toward them. */
+const WINDOW_HEIGHT_PX = 260;
+const BEAM_LEAN = 0.5;
 
 function hash(n: number): number {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
 }
 
+/** A pool of window light on the floor, in world tiles. */
+export interface Glow {
+  bay: number;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  /** The four glass colours in the order they fall across the pool. */
+  colours: [number, number, number][];
+}
+
 /**
- * One shaft per bay, falling at a slant from the vault onto the pews. Drawn into a separate
- * canvas: its alpha is the shaft's strength, its colour the glass it came through.
+ * Pools of light from the windows high on the left of each bay: 3–4 rows deep with 5 rows
+ * of shadow between, from a third of the way along the pews across to the far wall.
  */
-export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number, x1: number, width: number, height: number, now: number) {
-  ctx.clearRect(0, 0, width, height);
+export function glowsBetween(x0: number, x1: number, yMax: number): Glow[] {
+  const out: Glow[] = [];
+  const pewW = C.PEW_X[1]! - C.PEW_X[0]!;
   for (let b = Math.floor(x0 / BAY_W) - 1; b <= Math.floor(x1 / BAY_W) + 1; b++) {
-    const h = hash(b);
-    const [r, g, bl] = RAY_COLOURS[Math.floor(h * RAY_COLOURS.length)]!;
-    const footX = b * BAY_W + C.PEW_X[0]! + 2 + Math.floor(hash(b + 0.5) * (C.PEW_X[1]! - C.PEW_X[0]! - 4));
-    const footY = C.ROW_Y[1]! + Math.floor(hash(b + 0.25) * 6) * 2 - 0.5;
-    const [fx, fy] = project(cam, footX, footY);
-    // A slow drift, as the sun moves.
-    const lean = 0.55 + 0.04 * Math.sin(now / 20000 + b);
-    const halfFoot = 22;
-    const halfTop = 14;
-    const topY = -20;
-    const tx = fx - (fy - topY) * lean;
-    const grad = ctx.createLinearGradient(0, topY, 0, fy);
-    grad.addColorStop(0, `rgba(${r},${g},${bl},0.10)`);
-    grad.addColorStop(0.7, `rgba(${r},${g},${bl},0.28)`);
-    grad.addColorStop(1, `rgba(${r},${g},${bl},0.42)`);
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(tx - halfTop, topY);
-    ctx.lineTo(tx + halfTop, topY);
-    ctx.lineTo(fx + halfFoot, fy);
-    ctx.lineTo(fx - halfFoot, fy);
-    ctx.closePath();
-    ctx.fill();
-    // Where it lands, a pool across the pews and the floor between them.
-    const pool = ctx.createRadialGradient(fx, fy, 0, fx, fy, halfFoot * 1.8);
-    pool.addColorStop(0, `rgba(${r},${g},${bl},0.55)`);
-    pool.addColorStop(1, `rgba(${r},${g},${bl},0)`);
-    ctx.fillStyle = pool;
+    const bx = b * BAY_W;
+    const period = GLOW_ROWS + GLOW_GAP_ROWS;
+    const offset = Math.floor(hash(b) * period * 2) / 2;
+    for (let k = 0; ; k++) {
+      const y0 = C.ROW_Y[0]! + (offset + k * period) * C.PEW_STEP_Y - 1.5;
+      if (y0 > yMax) break;
+      const order = [...GLASS].sort((p, q) => hash(b * 3.7 + k + p[0]) - hash(b * 3.7 + k + q[0]));
+      out.push({ bay: b, x0: bx + C.PEW_X[0]! + pewW / 3, x1: bx + BAY_W, y0, y1: y0 + GLOW_ROWS * C.PEW_STEP_Y, colours: order });
+    }
+  }
+  return out;
+}
+
+const glowCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : undefined;
+
+/**
+ * Window light, drawn into a separate canvas: its alpha is the light's strength (the dither
+ * colours that share of pixels), its colour the glass it came through. A dim, diffuse pool on
+ * the floor and pews, and fainter rays slanting down onto it from the window.
+ */
+export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number, x1: number, width: number, height: number, now: number, yMax = 200) {
+  ctx.clearRect(0, 0, width, height);
+  if (!glowCanvas) return;
+  for (const g of glowsBetween(x0, x1, yMax)) {
+    const [sx0, sy0] = project(cam, g.x0, g.y0);
+    const [sx1, sy1] = project(cam, g.x1, g.y1);
+    const w = sx1 - sx0;
+    const h = sy1 - sy0;
+    // The glass colours in narrow diagonal bands, repeating across the pool.
+    const glass = (gctx: CanvasRenderingContext2D, ox: number, oy: number) => {
+      const grad = gctx.createLinearGradient(ox, oy, ox + w, oy + h);
+      const bands = Math.max(g.colours.length, Math.round(Math.hypot(w, h) / GLASS_BAND_PX));
+      for (let j = 0; j < bands; j++) {
+        const [r, gr, b] = g.colours[j % g.colours.length]!;
+        grad.addColorStop(j / (bands - 1), `rgb(${r},${gr},${b})`);
+      }
+      return grad;
+    };
+
+    // Rays: one narrow shaft per pane of glass, from the window high on the left down onto
+    // the pool, narrowing toward the window, at a slow drift as the sun moves.
+    const lean = WINDOW_HEIGHT_PX * (BEAM_LEAN + 0.03 * Math.sin(now / 20000 + g.bay));
+    const n = g.colours.length;
+    const foot = sy0 + h * 0.55;
     ctx.save();
-    ctx.translate(fx, fy);
-    ctx.scale(1, 0.55);
-    ctx.beginPath();
-    ctx.arc(0, 0, halfFoot * 1.8, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = GLOW_BEAM_ALPHA;
+    g.colours.forEach(([r, gr, b], i) => {
+      const cx = sx0 + (w * (i + 0.5)) / n;
+      const half = (w / n) * 0.32;
+      const top = foot - WINDOW_HEIGHT_PX;
+      ctx.fillStyle = `rgb(${r},${gr},${b})`;
+      ctx.beginPath();
+      ctx.moveTo(cx - half, foot);
+      ctx.lineTo(cx + half, foot);
+      ctx.lineTo(cx - lean + half * 0.5, top);
+      ctx.lineTo(cx - lean - half * 0.5, top);
+      ctx.closePath();
+      ctx.fill();
+    });
     ctx.restore();
+
+    // The pool: soft on every side, fading in a third of the way along the pews.
+    const m = 24;
+    glowCanvas.width = w + m * 2;
+    glowCanvas.height = h + m * 2;
+    const gc = glowCanvas.getContext('2d')!;
+    gc.fillStyle = glass(gc, m, m);
+    gc.fillRect(0, 0, glowCanvas.width, glowCanvas.height);
+    gc.globalCompositeOperation = 'destination-in';
+    const across = gc.createLinearGradient(m - 1.5 * TW, 0, m + w, 0);
+    const inF = (3 * TW) / (w + 1.5 * TW);
+    across.addColorStop(0, 'rgba(0,0,0,0)');
+    across.addColorStop(inF, `rgba(0,0,0,${GLOW_FLOOR_ALPHA})`);
+    across.addColorStop(1 - TW / (w + 1.5 * TW), `rgba(0,0,0,${GLOW_FLOOR_ALPHA})`);
+    across.addColorStop(1, 'rgba(0,0,0,0)');
+    gc.fillStyle = across;
+    gc.fillRect(0, 0, glowCanvas.width, glowCanvas.height);
+    const down = gc.createLinearGradient(0, m - TH, 0, m + h + TH);
+    const edge = (2 * TH) / (h + 2 * TH);
+    down.addColorStop(0, 'rgba(0,0,0,0)');
+    down.addColorStop(edge, 'rgba(0,0,0,1)');
+    down.addColorStop(1 - edge, 'rgba(0,0,0,1)');
+    down.addColorStop(1, 'rgba(0,0,0,0)');
+    gc.fillStyle = down;
+    gc.fillRect(0, 0, glowCanvas.width, glowCanvas.height);
+    gc.globalCompositeOperation = 'source-over';
+    ctx.drawImage(glowCanvas, sx0 - m, sy0 - m);
   }
 }

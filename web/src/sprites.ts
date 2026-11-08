@@ -68,7 +68,7 @@ export class PriestSprites {
 
   /**
    * The thurifer: /sprites/thurifer.png if present, else the priest sheet, else a placeholder
-   * in cassock and white surplice. Returns where the thurible's bowl is.
+   * in a light grey habit with a gold rope belt. Returns where the thurible's bowl is.
    */
   drawThurifer(ctx: CanvasRenderingContext2D, pose: Pose, fx: number, fy: number, s: ThuribleState): [number, number] {
     const name: SheetName = this.sheets.has('thurifer') ? 'thurifer' : 'priest';
@@ -189,14 +189,14 @@ function drawFromSheet(ctx: CanvasRenderingContext2D, sheet: HTMLCanvasElement, 
 }
 
 const PALETTE: Record<SheetName, { robe: string; trim: string; hat?: string }> = {
-  thurifer: { robe: '#1d1b22', trim: '#f4f1ea' },
+  thurifer: { robe: '#b4b1ac', trim: '#cfa232' },
   friar: { robe: '#6b4a2b', trim: '#e8dcc0' },
   priest: { robe: '#1d1b22', trim: '#f2efe6' },
-  bishop: { robe: '#f1ede2', trim: '#6c2c86', hat: '#f6f2e8' },
+  bishop: { robe: '#f1ede2', trim: '#c9c3b6' },
   cardinal: { robe: '#b0161c', trim: '#e9c46a', hat: '#c01820' },
 };
 
-/** A small figure in vestment colours: friar hood, white stole, mitre, scarlet zucchetto. */
+/** A small figure in vestment colours: friar's hood and belt, cassocks, scarlet zucchetto. */
 function drawPlaceholder(ctx: CanvasRenderingContext2D, v: SheetName, pose: Pose, fx: number, fy: number) {
   const pal = PALETTE[v];
   const kneeling = pose.action === 'kneel';
@@ -213,21 +213,13 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, v: SheetName, pose: Pose
     const w = 3 + Math.round((i / h) * 3);
     ctx.fillRect(x - w, y - h + i, w * 2 + 1, 1);
   }
-  // Trim: stole (priest), cord (friar), pallium-ish band (bishop, cardinal), surplice (thurifer)
+  // Trim: rope belt (friar, thurifer) or stole (priest, bishop, cardinal)
   ctx.fillStyle = pal.trim;
-  if (v === 'thurifer') {
-    for (let i = 0; i < Math.ceil(h * 0.55); i++) {
-      const w = 3 + Math.round((i / h) * 3) + 1;
-      ctx.fillRect(x - w, y - h + i, w * 2 + 1, 1);
-    }
-  } else if (v === 'priest') {
-    ctx.fillRect(x - 2, y - h + 1, 1, h - 2);
-    ctx.fillRect(x + 2, y - h + 1, 1, h - 2);
-  } else if (v === 'friar') {
+  if (v === 'friar' || v === 'thurifer') {
     ctx.fillRect(x - 4, y - h + 5, 9, 1);
   } else {
-    ctx.fillRect(x - 3, y - h + 2, 7, 1);
-    ctx.fillRect(x, y - h + 2, 1, 5);
+    ctx.fillRect(x - 2, y - h + 1, 1, h - 2);
+    ctx.fillRect(x + 2, y - h + 1, 1, h - 2);
   }
   // Arms reaching forward while lighting a candle
   if (pose.action === 'light') {
@@ -250,18 +242,7 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, v: SheetName, pose: Pose
       ctx.fillRect(x - 2, hy + 1, 5, 3);
     }
   }
-  if (v === 'bishop') {
-    ctx.fillStyle = pal.hat!; // mitre
-    ctx.fillRect(x - 2, hy - 3, 5, 3);
-    ctx.fillRect(x - 1, hy - 5, 3, 2);
-    ctx.fillRect(x, hy - 6, 1, 1);
-    ctx.fillStyle = '#d4a531';
-    ctx.fillRect(x, hy - 3, 1, 3);
-    // Crozier
-    ctx.fillRect(x + 5, y - h - 6, 1, h + 5);
-    ctx.fillRect(x + 4, y - h - 8, 2, 1);
-    ctx.fillRect(x + 3, y - h - 7, 1, 2);
-  } else if (v === 'cardinal') {
+  if (v === 'cardinal') {
     ctx.fillStyle = pal.hat!; // zucchetto
     ctx.fillRect(x - 2, hy - 1, 5, 2);
   }

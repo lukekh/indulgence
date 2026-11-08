@@ -1,16 +1,18 @@
 # Priest sprites
 
-These sheets are built from the [Universal LPC Spritesheet Character Generator](https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator) by `web/scripts/build-sprites.py`. Each is a simple pixel-art robe: a long-sleeved shirt over a plain ankle-length skirt, recoloured with the generator's own palettes.
+These sheets are built from the [Universal LPC Spritesheet Character Generator](https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator) by `web/scripts/build-sprites.py`. Each is a simple pixel-art robe: a long-sleeved shirt over a plain ankle-length skirt, recoloured with the generator's own palettes or a ramp defined in the script.
 
 | File | Who | Recipe |
 | --- | --- | --- |
 | `friar.png` | under 10,000 prayer tokens | brown robe, cloth hood, white rope belt, sandals |
 | `priest.png` | 10,000–49,999 | black robe, black shoes, balding grey hair |
-| `bishop.png` | 50,000–199,999 | white robe, purple mantle, white pointed hat |
-| `cardinal.png` | 200,000 and over | scarlet robe and mantle, red cap |
-| `thurifer.png` | the incense-bearer who processes every two minutes | black cassock under a white surplice |
+| `bishop.png` | 50,000–199,999 | the priest's robe in white, black shoes, bareheaded, white balding hair |
+| `cardinal.png` | 200,000 and over | the priest's robe in red, black shoes, white balding hair, scarlet zucchetto |
+| `thurifer.png` | the incense-bearer who processes every two minutes | the friar's habit in light grey, gold rope belt, sandals, no hood |
 
 Every character uses the light male body and the neutral face. The four clergy have the elderly head; the thurifer has the young head with plain chestnut hair.
+
+The generator has no skullcap, so the script paints the zucchetto on: the top rows of the head and hair in every frame are recoloured onto a scarlet ramp by brightness, keeping the outline. The gold belt is the generator's white robe belt, tinted onto a gold ramp the same way.
 
 To regenerate (for example after changing a recipe in the script):
 

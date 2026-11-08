@@ -71,24 +71,6 @@ hair/balding
   - Authors: ElizaWy
   - Links: https://opengameart.org/content/lpc-hair
 
-shoulders/mantal
-  - Note: Original by bluecarrot16, climb/jump/sit/emote/run by JaidynReiman
-  - Licenses: OGA-BY 3.0, GPL 3.0
-  - Authors: bluecarrot16, JaidynReiman
-  - Links: https://opengameart.org/content/lpc-pirates
-
-hat/magic/wizard
-  - Note: Original Wizard Hat and Recolors by bigbeargames and reemax; split into separate layers with new recolors by JaidynReiman
-  - Licenses: CC-BY-SA 3.0, GPL 2.0, GPL 3.0
-  - Authors: Michael Whitlock (bigbeargames), Tuomo Untinen (reemax), JaidynReiman
-  - Links: https://opengameart.org/content/lpc-items-and-game-effects, https://opengameart.org/content/lpc-pointed-hats, https://opengameart.org/content/lpc-expanded-hats-facial-helmets
-
-hat/pirate/bonnie
-  - Note: Bonnie Hat by Bluecarrot16, layers and added animations by JaidynReiman
-  - Licenses: OGA-BY 3.0
-  - Authors: bluecarrot16, JaidynReiman
-  - Links: https://opengameart.org/content/lpc-pirates, https://opengameart.org/content/lpc-expanded-hats-facial-helmets
-
 head/heads/human/male
   - Note: original head by Redshrike, tweaks by BenCreating, modular version by bluecarrot16
   - Licenses: OGA-BY 3.0, CC-BY-SA 3.0, GPL 3.0

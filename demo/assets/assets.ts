@@ -4,8 +4,8 @@
 // dither). render-assets.ts saves each sheet as a JPEG.
 
 import { C, type CandleName, type VestmentName } from '../../shared/constants';
-import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, type Camera, type Drawable, type Viewport } from '../../web/src/view';
-import { AMBIENT, COL, applyLighting, candleDrawable, candleFlame, drawFixedFlames, drawFlame, drawRays, drawStatic, fixedLights, furniture, type CandleView, type Light } from '../../web/src/scene';
+import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, TH, type Camera, type Drawable, type Viewport } from '../../web/src/view';
+import { AMBIENT, COL, GLOW_BEAM_ALPHA, GLOW_FLOOR_ALPHA, applyLighting, candleDrawable, candleFlame, drawFixedFlames, drawFlame, drawRays, drawStatic, fixedLights, furniture, glowsBetween, type CandleView, type Light } from '../../web/src/scene';
 import { ditherFrame } from '../../web/src/dither';
 import { PriestSprites, VESTMENTS } from '../../web/src/sprites';
 import { FACE, loadFont } from '../../web/src/text';
@@ -47,7 +47,7 @@ function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean): H
     applyLighting(ctx, w, h, lights, AMBIENT);
     const rays = canvas(w, h);
     const rctx = ctx2d(rays);
-    drawRays(rctx, cam, x0, x1, w, h, NOW);
+    drawRays(rctx, cam, x0, x1, w, h, NOW, yMax);
     ditherFrame(ctx, w, h, rctx.getImageData(0, 0, w, h).data);
   }
   drawFixedFlames(ctx, cam, x0, x1, yMax, NOW);
@@ -56,6 +56,26 @@ function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean): H
     drawFlame(ctx, fx, fy, NOW, i);
   });
   return base;
+}
+
+/** The window light alone, on black, at `gain` times its real strength. */
+function lightOnly(vp: Viewport, cam: Camera, gain: number): HTMLCanvasElement {
+  const { baseW: w, baseH: h } = vp;
+  const { x0, x1, yMax } = visibleTiles(cam, vp);
+  const rays = canvas(w, h);
+  const rctx = ctx2d(rays);
+  drawRays(rctx, cam, x0, x1, w, h, NOW, yMax);
+  const img = rctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = Math.min(1, (d[i + 3]! / 255) * gain);
+    d[i] = Math.round(d[i]! * a);
+    d[i + 1] = Math.round(d[i + 1]! * a);
+    d[i + 2] = Math.round(d[i + 2]! * a);
+    d[i + 3] = 255;
+  }
+  rctx.putImageData(img, 0, 0);
+  return rays;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +230,20 @@ async function main() {
   const full = { x: 0, y: 0, w: vp.baseW, h: vp.baseH, k: vp.scale };
   add('cathedral', sheet('The cathedral', `In game, empty, as on a 1440 × 900 screen (${vp.scale}×). The view repeats without end in every direction.`, [{ label: 'candlelit and dithered', src: nave(vp, cam, [], false), ...full }]));
   add('cathedral-raw', sheet('The cathedral, raw', `The same view before lighting and the dither (${vp.scale}×).`, [{ label: 'flat greys', src: nave(vp, cam, [], true), ...full }]));
+
+  // A pool of window light, with the camera moved down the nave to it.
+  const glow = glowsBetween(0, C.BAY_W - 1, 400).find((g) => g.bay === 0 && g.y0 > C.ROW_Y[0]!)!;
+  const glowCam: Camera = { ...cam, oy: Math.round(vp.baseH / 2 + 40 - ((glow.y0 + glow.y1) / 2) * TH) };
+  const [gx0] = project(glowCam, -2, 0);
+  const [gx1] = project(glowCam, C.BAY_W + 2, 0);
+  const crop = { x: gx0, y: 0, w: gx1 - gx0, h: vp.baseH, k: 2 };
+  add(
+    'window-light',
+    sheet('Window light', `Dim, diffuse pools 3–4 rows deep with 5 rows between, from a third of the way along the pews to the far wall: ${Math.round(GLOW_FLOOR_ALPHA * 100)}% on the floor, ${Math.round(GLOW_BEAM_ALPHA * 100)}% in the rays from the window.`, [
+      { label: 'in game: candlelit and dithered (2×)', src: nave(vp, glowCam, [], false), ...crop },
+      { label: 'the light alone, at 5× its real strength (2×)', src: lightOnly(vp, glowCam, 5), ...crop },
+    ]),
+  );
 
   add('altar', naveSheet('The altar', 'One at the top of every bay: altar, cross, two candlesticks, before a dark reredos.', { x0: C.ALTAR_X[0]! - 4, x1: C.ALTAR_X[1]! + 5, y0: -2.8, y1: C.ALTAR_Y[1]! + 2.5 }, 4));
   add('pews', naveSheet('The pews', 'Long plain benches across the nave between the side aisles, with a candle on each end.', { x0: C.PEW_X[0]! - 2, x1: C.PEW_X[1]! + 3, y0: C.ROW_Y[2]! - 1.5, y1: C.ROW_Y[4]! + 0.6 }, 3));

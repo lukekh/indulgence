@@ -47,6 +47,7 @@ Two stretches play at 3× speed in the GIF: the rest of your walk to the pew aft
 | `cathedral.jpg`, `cathedral-raw.jpg` | The whole empty view, as on a 1440 × 900 screen |
 | `altar.jpg` | Altar, cross and candlesticks before the reredos |
 | `pews.jpg` | Three rows of pews between the side aisles |
+| `window-light.jpg` | A pool of stained-glass window light down the nave, in game and on its own at 5× strength |
 | `votive-stand.jpg` | A stand with tapers, votives, pillars and paschal candles, lit |
 | `priest-friar.jpg`, `priest-priest.jpg`, `priest-bishop.jpg`, `priest-cardinal.jpg` | Each vestment in every pose: up the aisle, kneeling, along the pew both ways (profile), walking out, lighting a candle |
 | `thurifer.jpg` | The thurifer at three points of the thurible's swing |
