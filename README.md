@@ -3,7 +3,7 @@
 
 `/indulgence` is a satirical Claude Code plugin. It spends your own model tokens on Latin prayers, which a pixel-art priest recites in a shared cathedral that goes on forever sideways. When the budget runs out or you leave, the priest lights a candle and walks out. The candle burns for about a day.
 
-![A /indulgence session: the gate boots, /indulgence runs, your priest joins three friends praying beside two friends' votives, then lights a candle and leaves](demo/out/indulgence-demo.gif)
+![A /indulgence session: the gate boots, /indulgence runs, and in a dark, candlelit cathedral your priest walks slowly up the side aisle to kneel with three friends near two friends' votives while a thurifer swings incense past; then it lights a candle and leaves](demo/out/indulgence-demo.gif)
 
 Regenerate this recording with `cd demo && npm run gif` (see [`demo/`](demo)).
 
@@ -16,7 +16,7 @@ The design is in [`indulgence — Technical Spec.md`](indulgence%20—%20Technic
 | [`shared/`](shared) | Geometry, pacing and spend constants, plus the canned prayers. One source for all three runtimes | JSON (+ TS wrapper; Rust reads it in `build.rs`) |
 | [`module/`](module) | SpacetimeDB module: tables, reducers, scheduled jobs, seating, per-viewer views | Rust, `spacetimedb` 2.14 |
 | [`gate/`](gate) | Gate: remote MCP server, OAuth 2.1 authorization server (GitHub sign-in), OIDC issuer for SpacetimeDB JWTs, spend, pacing, disconnect detection, viewer tickets | TypeScript on Node 22, MCP SDK 1.32, `jose`, SpacetimeDB SDK |
-| [`web/`](web) | Viewer: isometric Canvas 2D renderer, field-of-view subscription, hover cards, canned prayers | TypeScript, Vite, SpacetimeDB SDK |
+| [`web/`](web) | Viewer: full-screen, candlelit isometric Canvas 2D renderer with LPC sprites, the thurifer, field-of-view subscription, hover cards, canned prayers | TypeScript, Vite, SpacetimeDB SDK |
 | [`demo/`](demo) | Scripted end-to-end demo: boots everything from scratch, then records a GIF, plays it in Chrome, or leaves a sandbox running | TypeScript, Playwright, ffmpeg |
 | [`plugin/`](plugin) | Claude Code plugin: `/indulgence` command, `priest` subagent, remote MCP registration. Markdown and JSON only | |
 | [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) | Marketplace, so the repo installs with `/plugin marketplace add lukekh/indulgence` | |
@@ -51,7 +51,7 @@ SpacetimeDB caches the gate's JWKS for about 5 minutes. When the gate's key chan
 (cd module && cargo test)          # seating, stands, tiers: 14 tests, including the acceptance properties
 (cd gate && npm test)              # safety filters, sessions/pacing/disconnects, tool-result property test, full OAuth+MCP HTTP flow: 65 tests
 (cd web && npm test)               # projection and movement: 8 tests
-(cd gate && npm run test:stdb)     # 17 checks against a real SpacetimeDB (see the header of gate/test-integration/stdb.it.ts)
+(cd gate && npm run test:stdb)     # 17 checks against a real SpacetimeDB (setup in the header of gate/test-integration/stdb.it.ts)
 ```
 
 How the spec's acceptance checks are covered:
@@ -82,9 +82,15 @@ How the spec's acceptance checks are covered:
 1. Publish the new public key in `GATE_EXTRA_PUBLIC_JWKS` and wait at least 5 minutes.
 2. Switch `GATE_SIGNING_KEY`/`GATE_SIGNING_KID` to the new key, and keep the old public key in `GATE_EXTRA_PUBLIC_JWKS` until the last tokens it signed have expired (viewer tokens: 4 h).
 
-## Sprites
+## The look
 
-The viewer loads Universal LPC sheets from `web/public/sprites/{friar,priest,bishop,cardinal}.png`. Until they exist it draws placeholder figures in each vestment's colours. [`web/public/sprites/README.md`](web/public/sprites/README.md) has a generator link for each vestment, the rows the renderer uses, and the credit requirements.
+- **Full screen.** The viewer fills the window. Its 480 × 270 pixel-art canvas is scaled up by a whole number (3× at 1440 × 900) and then grown to cover the screen, so wider windows see more of the nave. A tall back wall with lancet, rose and clerestory windows rises behind the altars, and the floor continues past the door.
+- **From the entrance.** The camera looks from the door toward the altar. Priests come in through the door, along the back of the nave and up the side aisle on their half, then side-step into their pew. All of that is seen from behind. They turn around only when they leave: along the pew, to the votive stand beside the aisle, where they kneel, light their candle and walk out toward the camera.
+- **Slowly.** Priests walk at 1 tile per second, and the thurifer at 0.75. The candle is lit 20 s after a priest leaves its pew, and the priest is gone by 42 s.
+- **Four long pews** per bay span the nave between the side aisles. They are plain wood in a muted, unsaturated brown.
+- **Dark.** A light map dims everything to about a third of full brightness. The candles let warm, flickering pools of light through: one on every pew end, sconces on the arcade columns, two on each altar, the votive stands, and the glowing thurible. Faint cool light falls through the windows.
+- **The thurifer.** A server in cassock and surplice processes along the front of the nave, swinging a smoking thurible. It isn't stored anywhere: its position is a pure function of server time, so every viewer sees the same procession, and it passes any spot exactly every two minutes. Hover over it for the incensation prayer.
+- **Sprites** are simple robes composed from the Universal LPC generator by `web/scripts/build-sprites.py`. Recipes, regeneration and credits are in [`web/public/sprites/README.md`](web/public/sprites/README.md).
 
 ## Differences from the spec
 
@@ -92,6 +98,7 @@ The viewer loads Universal LPC sheets from `web/public/sprites/{friar,priest,bis
 - **Module configuration.** The module reads `INDULGENCE_ISSUER` and `INDULGENCE_AUDIENCE` as SpacetimeDB 2.x publish-time environment variables. `client_connected` refuses every connection except the database owner and tokens from that issuer and audience. The gate's identity enters `gate_service` automatically when it connects with `role: "gate"`, `sub: "gate"`.
 - **Extra columns and tables.** These are `priest.candle_id`, so the client knows which candle the priest walks to; a private `candle_owner`, so `forget` can find candles without a public owner column; `owner`; and a `touch_account` reducer, which refreshes tokens only for accounts that still exist. The consent screen is triggered when `upsert_account` with no name choice fails with `consent_required`.
 - **Seating.** Before scoring, the candidate seats narrow to those within 4 tiles of some mutual whenever any exist. With two mutuals far apart, every seat between them has the same distance sum, so the formula alone can seat you in empty space between them. With 3+ mutuals, "within 4 tiles of one of them" can only be guaranteed while such a seat is free, and the property test checks exactly that.
+- **Pace and routes.** Priests walk at 1 tile/s instead of 4, so `CANDLE_LIT_AFTER_MS` is 20 s (was 8) and `PRIEST_REMOVE_AFTER_MS` is 42 s (was 20). The pews no longer split at a centre aisle: they run continuously between the side aisles, and priests walk the side aisles. Seat coordinates and the seating algorithm are unchanged; the three middle tiles of each pew simply have no seats.
 - **Done on the last prayer.** `pray` returns `done: true` on the call that exhausts the budget, rather than on the call after it, so the model doesn't write a prayer that would be thrown away. The priest still departs once that prayer's 20-second slot ends.
 - **Runaway protection.** After 10 rejected prayers in a row the session ends, so a model that keeps writing rejected text can't run forever without being charged. A rejected `pray` is held for 3 seconds.
 - **Leak filter.** Besides the spec's list, it rejects parentheses, angle brackets ("brackets" in the British sense) and `` ` | $ # * ^ ~ ``. The prompts tell the model to avoid them, and the semicolon.

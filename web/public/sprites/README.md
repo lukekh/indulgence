@@ -1,41 +1,36 @@
 # Priest sprites
 
-The viewer loads one sheet per vestment from this folder:
+These sheets are built from the [Universal LPC Spritesheet Character Generator](https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator) by `web/scripts/build-sprites.py`. Each is a simple pixel-art robe: a long-sleeved shirt over a plain ankle-length skirt, recoloured with the generator's own palettes.
 
-| File | Vestment | Spend (budget pledged) |
+| File | Who | Recipe |
 | --- | --- | --- |
-| `friar.png` | Brown habit | under 10,000 |
-| `priest.png` | Black cassock, white stole | 10,000–49,999 |
-| `bishop.png` | Mitre and crozier | 50,000–199,999 |
-| `cardinal.png` | Scarlet | 200,000 and over |
+| `friar.png` | under 10,000 prayer tokens | brown robe, cloth hood, white rope belt, sandals |
+| `priest.png` | 10,000–49,999 | black robe, black shoes, balding grey hair |
+| `bishop.png` | 50,000–199,999 | white robe, purple mantle, white pointed hat |
+| `cardinal.png` | 200,000 and over | scarlet robe and mantle, red cap |
+| `thurifer.png` | the incense-bearer who processes every two minutes | black cassock under a white surplice |
 
-A missing sheet falls back to a procedural placeholder, so you can add them one at a time.
+Every character uses the light male body and the neutral face. The four clergy have the elderly head; the thurifer has the young head with plain chestnut hair.
 
-## Making a sheet
+To regenerate (for example after changing a recipe in the script):
 
-Use the [Universal LPC Spritesheet Character Generator](https://liberatedpixelcup.github.io/Universal-LPC-Spritesheet-Character-Generator/). Open the link for a vestment, adjust it, then choose **Download → Spritesheet** (`character-spritesheet.png`). Rename the file and drop it here. Keep the standard layout: 64 × 64 frames, 832 px wide, at least 54 rows, with directions ordered up, left, down, right. Oversize weapon blocks below row 54 are ignored.
+```sh
+git clone --filter=blob:none https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator /tmp/lpc
+python3 web/scripts/build-sprites.py --lpc /tmp/lpc     # needs Pillow
+```
 
-The generator has no mitre, cassock, stole, zucchetto or crozier, so these recipes use the closest items it has. All four share the base `#sex=male&body=Body_Color_light&head=Human_Male_Elderly_light&expression=Neutral_light`:
-
-- **Friar:** `…&clothes=Longsleeve_brown&legs=Plain_skirt_brown&hat=Hood_brown&belt=Robe_Belt_white&shoes=Sandals_brown`
-- **Priest:** `…&hair=Balding_gray&clothes=Longsleeve_black&legs=Plain_skirt_black&neck=Scarf_white&shoes=Basic_Shoes_black`. Tabard `white` gives a surplice instead of a collar.
-- **Bishop:** `…&hair=Balding_white&clothes=Longsleeve_white&legs=Plain_skirt_white&shoulders=Mantal_purple&charm=Cross_amulet_gold_red&hat=Wizard_Hat_Base_white&weapon=S_staff_gold&shoes=Basic_Shoes_white`. The wizard hat stands in for a mitre, and the S staff for a crozier. The S staff exists only for walk, hurt and oversize thrust, so it vanishes while kneeling.
-- **Cardinal:** `…&hair=Balding_white&clothes=Longsleeve_red&legs=Plain_skirt_red&shoulders=Mantal_red&charm=Cross_amulet_gold_red&hat=Bonnie_red&shoes=Basic_Shoes_red`
-
-Prefix each with `https://liberatedpixelcup.github.io/Universal-LPC-Spritesheet-Character-Generator/`.
+The script writes the sheets in the generator's standard layout: 832 × 3456, 64 × 64 frames, with rows ordered up, left, down, right. It also writes `CREDITS.txt` with the authors and licences of every layer it used. You can replace any sheet with one exported from the [generator site](https://liberatedpixelcup.github.io/Universal-LPC-Spritesheet-Character-Generator/) in the same layout. If you do, paste its credits into `CREDITS.txt`.
 
 ## Animations used
 
-The renderer (`src/sprites.ts`) uses these rows, scaled to half size for the 16 × 8 tile grid:
+The renderer (`src/sprites.ts`) draws these rows at half size for the 16 × 8 tile grid:
 
 | Action | LPC rows | Frames |
 | --- | --- | --- |
-| Walking in and out | walk, rows 8–11 | 1–8 at 10 fps |
-| Kneeling in the pew, facing the altar | sit, rows 30–33 | 0 |
+| Walking: from behind on the way in, any direction on the way out | walk, rows 8–11 | 1–8 at 5 fps (priests walk slowly) |
+| Kneeling in the pew, from behind | sit, rows 30–33 | 0 |
 | Lighting the candle | thrust, rows 4–7 | the generator's "watering" cycle 0, 1, 4, 4, 4, 4, 5 |
 
-Some items (Robe Belt, Tabard, Cross amulet) have no sit frames, so they disappear while kneeling. Check the generator's preview of the **sit** animation before exporting.
+## Licences
 
-## Licences and credits
-
-LPC art is CC-BY-SA, CC-BY, OGA-BY, GPL or CC0, depending on the asset. Every author except CC0 ones must be credited where players can reach it. The generator exports `credits.txt` and `credits.csv` with each sheet. Merge the credits for all four sheets into `CREDITS.txt` in this folder; the site footer links to it. The friar and cardinal recipes can be used entirely under OGA-BY or CC0. The scarf (priest) and wizard hat (bishop) are CC-BY-SA or GPL only, which means share-alike obligations for those sheets.
+The art is a derivative of LPC layers under OGA-BY 3.0, CC-BY-SA 3.0, CC-BY 3.0 and GPL; see `CREDITS.txt` for which applies to each layer. Where a layer offers several licences, any one may be chosen. The bishop's pointed hat is CC-BY-SA 3.0 or GPL only, so `bishop.png` carries share-alike terms. The other sheets can be used entirely under OGA-BY. The site footer links to `CREDITS.txt`.

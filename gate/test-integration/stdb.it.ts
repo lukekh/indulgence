@@ -1,6 +1,6 @@
 // Integration test against a real SpacetimeDB (local `spacetime start`).
 //
-//   spacetime start --in-memory --listen-addr 127.0.0.1:3077
+//   spacetime start --in-memory --data-dir "$(mktemp -d)" --listen-addr 127.0.0.1:3077
 //   INDULGENCE_ISSUER=http://localhost:8787 INDULGENCE_AUDIENCE=indulgence-it \
 //     spacetime publish indulgence-it --server <local> --module-path module --yes
 //   STDB_URI=ws://127.0.0.1:3077 STDB_MODULE=indulgence-it npm run test:stdb
@@ -241,7 +241,7 @@ assert.equal(candle.size.tag, 'Taper');
 assert.equal(burnH, 24);
 assert.deepEqual(labels(vb), ['B:bob']);
 assert.deepEqual(texts(vb), []);
-ok(`depart: candle "${candle.label}" on arcade ${candle.arcade} slot ${candle.slot}, lit +8 s, burns ${burnH} h; A's labels and texts removed`);
+ok(`depart: candle "${candle.label}" on arcade ${candle.arcade} slot ${candle.slot}, lit +${litDelay / 1000} s, burns ${burnH} h; A's labels and texts removed`);
 
 // --- forget ------------------------------------------------------------------------------------
 const before = sql(`SELECT * FROM account WHERE gh_hash = '${keys.ghHash(users.alice.id)}'`);
@@ -267,7 +267,7 @@ console.log(`  … waiting ${C.PRIEST_REMOVE_AFTER_MS / 1000}s for remove_priest
 await sleep(C.PRIEST_REMOVE_AFTER_MS + 1500);
 assert.ok(!vb.conn.db.priest.priestId.find(ai.priestId));
 assert.ok(!vb.conn.db.prayerTick.priestId.find(ai.priestId));
-ok('remove_priest deletes the priest and prayer_tick rows 20 s after departure');
+ok(`remove_priest deletes the priest and prayer_tick rows ${C.PRIEST_REMOVE_AFTER_MS / 1000} s after departure`);
 
 await sessions.shutdown();
 await sleep(300);

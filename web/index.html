@@ -10,12 +10,13 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='7' y='5' width='2' height='10' fill='%23efe4c8'/%3E%3Cpath d='M8 0c2 3 1 4 0 5-1-1-2-2 0-5z' fill='%23ffcf5a'/%3E%3C/svg%3E" />
     <style>
       :root { color-scheme: dark; }
-      html, body { margin: 0; height: 100%; background: #0c0907; color: #a89780; font: 12px/1.5 Georgia, serif; }
-      body { display: flex; flex-direction: column; }
-      #view { flex: 1; width: 100%; min-height: 0; display: block; }
-      footer { padding: 6px 16px 10px; font-size: 11px; color: #7d6e5c; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0907; color: #a89780; font: 12px/1.5 Georgia, serif; }
+      /* The cathedral fills the whole window. */
+      #view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+      footer { position: fixed; left: 10px; bottom: 8px; max-width: min(820px, calc(100vw - 20px)); padding: 3px 9px; border-radius: 4px; background: rgba(12, 9, 7, 0.62); font-size: 11px; color: #8d7e69; }
+      footer details[open] { padding: 4px 0; }
       footer details summary { cursor: pointer; list-style: none; }
-      footer p { margin: 4px 0; max-width: 820px; }
+      footer p { margin: 4px 0; }
       footer a { color: #a89780; }
     </style>
   </head>
@@ -23,7 +24,7 @@
     <canvas id="view" aria-label="An endless cathedral where priests pray in Latin"></canvas>
     <footer>
       <details>
-        <summary>Satire. Not affiliated with any church. Indulgences sold here grant no remission of anything. · Disclaimers &amp; credits</summary>
+        <summary>Satire · grants no remission of anything · disclaimers &amp; credits</summary>
         <p><b>Satire.</b> Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.</p>
         <p><b>Real cost.</b> Every prayer spends tokens your provider bills you for. The budget counts prayer text only; actual usage is roughly 2 to 5 times higher, and more in long sessions.</p>
         <p><b>Generated text.</b> Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.</p>

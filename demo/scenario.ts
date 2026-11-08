@@ -16,6 +16,7 @@ import { callTool } from '../gate/src/mcp.js';
 import type { GateConfig } from '../gate/src/config.js';
 import { DbConnection, tables } from '../gate/src/module_bindings/index.js';
 import { FakeGitHub, LATIN_PRAYERS } from '../gate/test/fakes.js';
+import { C } from '../shared/constants.js';
 
 export interface CathedralOptions {
   gatePort: number;
@@ -150,9 +151,8 @@ export async function startCathedral(o: CathedralOptions) {
   };
   for (const s of live) prayLoop(s, Math.random() * 12_000);
 
-  // Let the votive-lighters finish their walk out before the camera arrives.
-  const settle = 22_000 - (Date.now() - candlesLitAt);
-  if (settle > 0) await sleep(settle);
+  // The votive-lighters walk out slowly; the camera should arrive after they have gone.
+  const readyAt = candlesLitAt + C.PRIEST_REMOVE_AFTER_MS + 2000;
 
   // ---- you, through the gate's MCP tool handler -------------------------------------------
   const you = acct(YOU);
@@ -161,6 +161,8 @@ export async function startCathedral(o: CathedralOptions) {
 
   return {
     sessions,
+    /** When the two friends who lit votives have left the building (ms). */
+    readyAt,
     /** `begin` as Claude Code would call it. Returns the real tool result text and fields. */
     async begin(intention: string, budget: number) {
       const res = await callTool(sessions, 'begin', { intention, budget_tokens: budget }, { account: you, signal: signal(), mcpSessionId: `demo-${YOU}` });

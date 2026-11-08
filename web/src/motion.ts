@@ -1,5 +1,12 @@
 // Client-side movement. The server stores only state changes (`state`, `state_since`,
-// `lit_at`); every walk is animated here along fixed waypoints at 4 tiles per second.
+// `lit_at`); every walk is animated here along fixed waypoints at a slow, solemn
+// WALK_TILES_PER_S (1 tile per second).
+//
+// The camera stands at the entrance looking toward the altar. A priest comes in by the
+// door, walks along the back of the nave to the side aisle on its half, up the aisle and
+// sideways into its pew: all of it facing away from the camera, so only its back is seen.
+// It turns around only when it leaves: back along its pew to the side aisle, to the
+// votive stand beside the aisle, kneels, lights its candle, and walks out to the door.
 
 import { C, seatPos, standX } from '../../shared/constants';
 
@@ -36,8 +43,14 @@ const MAX_SPEED = 12;
 const LIT = C.CANDLE_LIT_AFTER_MS;
 const REMOVE = C.PRIEST_REMOVE_AFTER_MS;
 
-export function aisleX(bay: number): number {
+/** The door, in the middle of each bay's back wall. */
+export function doorX(bay: number): number {
   return C.BAY_W * bay + C.AISLE_CENTRE_X;
+}
+
+/** Side aisle between the pews and the arcade, on a priest's half of the nave. */
+export function sideAisleX(bay: number, half: number): number {
+  return C.BAY_W * bay + (half === 0 ? C.SIDE_AISLE_X[0]! : C.SIDE_AISLE_X[1]!);
 }
 
 /** Fine position of a candle slot on its stand: 4 tiers stepping back, 10 along y. */
@@ -85,31 +98,42 @@ export function along(path: Pt[], d: number): { p: Pt; dir: Dir; done: boolean }
 
 export function enterPath(p: Pick<PriestPlan, 'bay' | 'row' | 'half' | 'seat'>): Pt[] {
   const [sx, sy] = seatPos(p.bay, p.row, p.half, p.seat);
-  const ax = aisleX(p.bay);
+  const door = doorX(p.bay);
+  const side = sideAisleX(p.bay, p.half);
   return [
-    [ax, C.DOOR_Y],
-    [ax, sy],
+    [door, C.DOOR_Y],
+    [door, C.BACK_WALK_Y],
+    [side, C.BACK_WALK_Y],
+    [side, sy],
     [sx, sy],
   ];
 }
 
 export function departPaths(p: PriestPlan): { toStand: Pt[]; toDoor: Pt[]; approach?: Pt } {
   const [sx, sy] = seatPos(p.bay, p.row, p.half, p.seat);
-  const ax = aisleX(p.bay);
+  const door = doorX(p.bay);
+  const side = sideAisleX(p.bay, p.half);
   if (!p.candle) {
-    return { toStand: [[sx, sy]], toDoor: [[sx, sy], [ax, sy], [ax, C.DOOR_Y]] };
+    return { toStand: [[sx, sy]], toDoor: [[sx, sy], [side, sy], [side, C.BACK_WALK_Y], [door, C.BACK_WALK_Y], [door, C.DOOR_Y]] };
   }
   const approach = approachPoint(p.bay, p.candle.arcade, p.candle.slot);
+  // The stand beside our own side aisle is a step away; a farther one (when ours is full)
+  // is reached along the front of the nave.
+  const toStand: Pt[] =
+    Math.abs(approach[0] - side) <= 2
+      ? [[sx, sy], [side, sy], [side, approach[1]], approach]
+      : [[sx, sy], [side, sy], [side, C.FRONT_GAP_Y], [approach[0], C.FRONT_GAP_Y], approach];
   return {
     approach,
-    toStand: [[sx, sy], [ax, sy], [ax, C.FRONT_GAP_Y], [approach[0], C.FRONT_GAP_Y], approach],
-    toDoor: [approach, [approach[0], C.BACK_WALK_Y], [ax, C.BACK_WALK_Y], [ax, C.DOOR_Y]],
+    toStand,
+    toDoor: [approach, [approach[0], C.BACK_WALK_Y], [door, C.BACK_WALK_Y], [door, C.DOOR_Y]],
   };
 }
 
 /** Where a priest is, which way it faces and what it is doing at server time `now`. */
 export function poseAt(p: PriestPlan, now: number): Pose {
   const [sx, sy] = seatPos(p.bay, p.row, p.half, p.seat);
+  // Facing the altar, away from the camera at the entrance.
   const kneel = (t: number): Pose => ({ x: sx, y: sy, dir: 'up', action: 'kneel', t, alpha: 1 });
 
   if (p.state !== 'Departing') {
@@ -119,21 +143,24 @@ export function poseAt(p: PriestPlan, now: number): Pose {
     const t = Math.max(0, now - start) / 1000;
     const a = along(path, t * SPEED);
     if (a.done) return kneel(t - pathLength(path) / SPEED);
-    return { x: a.p[0], y: a.p[1], dir: a.dir, action: 'walk', t, alpha: 1 };
+    // Coming in, only the back is ever seen: sideways steps are side-steps.
+    return { x: a.p[0], y: a.p[1], dir: 'up', action: 'walk', t, alpha: 1 };
   }
 
   const t = Math.max(0, now - p.since);
   const { toStand, toDoor, approach } = departPaths(p);
   if (approach) {
-    const walkMs = LIT - C.LIGHT_CANDLE_MS;
+    // Walk at the slow pace (faster only if the stand is too far to reach in time), kneel
+    // at the stand, then light the candle in the last LIGHT_CANDLE_MS before lit_at.
+    const lightFrom = LIT - C.LIGHT_CANDLE_MS;
     const L1 = pathLength(toStand);
-    const v1 = Math.min(MAX_SPEED, Math.max(SPEED, L1 / (walkMs / 1000)));
+    const v1 = Math.min(MAX_SPEED, Math.max(SPEED, L1 / (lightFrom / 1000)));
     if (t < LIT) {
       const a = along(toStand, (t / 1000) * v1);
       if (!a.done) return { x: a.p[0], y: a.p[1], dir: a.dir, action: 'walk', t: t / 1000, alpha: 1 };
       const faceStand: Dir = approach[0] > standX(p.candle!.arcade) ? 'left' : 'right';
-      const arrived = (L1 / v1) * 1000;
-      return { x: approach[0], y: approach[1], dir: faceStand, action: 'light', t: (t - arrived) / 1000, alpha: 1 };
+      if (t < lightFrom) return { x: approach[0], y: approach[1], dir: faceStand, action: 'kneel', t: (t - (L1 / v1) * 1000) / 1000, alpha: 1 };
+      return { x: approach[0], y: approach[1], dir: faceStand, action: 'light', t: (t - lightFrom) / 1000, alpha: 1 };
     }
   }
   const startExit = approach ? LIT : 0;

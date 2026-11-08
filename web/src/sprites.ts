@@ -18,10 +18,14 @@ const ANIM = {
   sit: { row: 30, frames: 3 },
 } as const;
 
+/** Leg cycle rate, matched to the slow 1 tile/s walk. */
+const WALK_FPS = 5;
+
 /** Candle lighting: the generator's "watering" cycle on the thrust rows. */
 const LIGHT_CYCLE = [0, 1, 4, 4, 4, 4, 5];
 
 export const VESTMENTS: VestmentName[] = ['friar', 'priest', 'bishop', 'cardinal'];
+type SheetName = VestmentName | 'thurifer';
 
 export function vestmentName(tag: string): VestmentName {
   const v = tag.toLowerCase() as VestmentName;
@@ -29,12 +33,12 @@ export function vestmentName(tag: string): VestmentName {
 }
 
 export class PriestSprites {
-  private sheets = new Map<VestmentName, HTMLCanvasElement>();
+  private sheets = new Map<SheetName, HTMLCanvasElement>();
 
   static async load(base = '/sprites'): Promise<PriestSprites> {
     const s = new PriestSprites();
     await Promise.all(
-      VESTMENTS.map(async (v) => {
+      [...VESTMENTS, 'thurifer' as const].map(async (v) => {
         try {
           const img = await loadImage(`${base}/${v}.png`);
           if (img.width < 13 * FRAME || img.height < 34 * FRAME) return;
@@ -51,6 +55,22 @@ export class PriestSprites {
     return this.sheets.has(v);
   }
 
+  hasThuriferSheet(): boolean {
+    return this.sheets.has('thurifer') || this.sheets.has('priest');
+  }
+
+  /**
+   * The thurifer: /sprites/thurifer.png if present, else the priest sheet, else a placeholder
+   * in cassock and white surplice. Returns where the thurible's bowl is.
+   */
+  drawThurifer(ctx: CanvasRenderingContext2D, pose: Pose, fx: number, fy: number, s: ThuribleState): [number, number] {
+    const sheet = this.sheets.get('thurifer') ?? this.sheets.get('priest');
+    if (sheet) drawFromSheet(ctx, sheet, pose, fx, fy);
+    else drawPlaceholder(ctx, 'thurifer', pose, fx, fy);
+    const [ox, oy] = handOffset(!!sheet);
+    return drawThurible(ctx, Math.round(fx + ox), Math.round(fy + oy), s);
+  }
+
   /** Draw a priest with its feet at (fx, fy) on the base canvas. */
   draw(ctx: CanvasRenderingContext2D, v: VestmentName, pose: Pose, fx: number, fy: number) {
     if (pose.action === 'gone' || pose.alpha <= 0) return;
@@ -63,6 +83,45 @@ export class PriestSprites {
   }
 }
 
+/** Where the thurible hangs from, relative to the feet, for a sheet or the placeholder. */
+function handOffset(hasSheet: boolean): [number, number] {
+  return hasSheet ? [6, -13] : [5, -9];
+}
+
+/** Where the thurifer's hand is, for a thurifer drawn with feet at (fx, fy). */
+export function thuriferHand(sprites: PriestSprites, fx: number, fy: number): [number, number] {
+  const [ox, oy] = handOffset(sprites.hasThuriferSheet());
+  return [Math.round(fx + ox), Math.round(fy + oy)];
+}
+
+/** Bowl position of a thurible hanging from (hx, hy) at swing -1 … 1. */
+export function thuribleBowl(hx: number, hy: number, swing: number): [number, number] {
+  const angle = swing * 0.95;
+  return [hx + Math.sin(angle) * 7, hy + Math.cos(angle) * 7 + 1];
+}
+
+export interface ThuribleState {
+  /** -1 … 1 */
+  swing: number;
+}
+
+/** Thurible on its chains, swinging ahead of the hand. Returns the bowl's position. */
+export function drawThurible(ctx: CanvasRenderingContext2D, hx: number, hy: number, s: ThuribleState): [number, number] {
+  const angle = s.swing * 0.95;
+  const len = 7;
+  const px = hx + Math.sin(angle) * len;
+  const py = hy + Math.cos(angle) * len;
+  ctx.fillStyle = '#b8902e';
+  for (let i = 1; i < len; i++) ctx.fillRect(Math.round(hx + (Math.sin(angle) * len * i) / len), Math.round(hy + (Math.cos(angle) * len * i) / len), 1, 1);
+  ctx.fillStyle = '#d4a531';
+  ctx.fillRect(Math.round(px) - 1, Math.round(py), 3, 2);
+  ctx.fillStyle = '#8a6a1e';
+  ctx.fillRect(Math.round(px) - 1, Math.round(py) + 2, 3, 1);
+  ctx.fillStyle = Math.abs(s.swing) > 0.8 ? '#ff9a3c' : '#c4562a';
+  ctx.fillRect(Math.round(px), Math.round(py) - 1, 1, 1);
+  return [px, py + 1];
+}
+
 function drawFromSheet(ctx: CanvasRenderingContext2D, sheet: HTMLCanvasElement, pose: Pose, fx: number, fy: number) {
   const f = FRAME * SPRITE_SCALE;
   let row: number;
@@ -70,7 +129,7 @@ function drawFromSheet(ctx: CanvasRenderingContext2D, sheet: HTMLCanvasElement, 
   switch (pose.action) {
     case 'walk':
       row = ANIM.walk.row + DIR_ROW[pose.dir];
-      col = 1 + (Math.floor(pose.t * 10) % (ANIM.walk.frames - 1));
+      col = 1 + (Math.floor(pose.t * WALK_FPS) % (ANIM.walk.frames - 1));
       break;
     case 'light':
       row = ANIM.thrust.row + DIR_ROW[pose.dir];
@@ -84,7 +143,8 @@ function drawFromSheet(ctx: CanvasRenderingContext2D, sheet: HTMLCanvasElement, 
   ctx.drawImage(sheet, col * f, row * f, f, f, Math.round(fx - f / 2), Math.round(fy - f + 2), f, f);
 }
 
-const PALETTE: Record<VestmentName, { robe: string; trim: string; hat?: string }> = {
+const PALETTE: Record<SheetName, { robe: string; trim: string; hat?: string }> = {
+  thurifer: { robe: '#1d1b22', trim: '#f4f1ea' },
   friar: { robe: '#6b4a2b', trim: '#e8dcc0' },
   priest: { robe: '#1d1b22', trim: '#f2efe6' },
   bishop: { robe: '#f1ede2', trim: '#6c2c86', hat: '#f6f2e8' },
@@ -92,10 +152,10 @@ const PALETTE: Record<VestmentName, { robe: string; trim: string; hat?: string }
 };
 
 /** A small figure in vestment colours: friar hood, white stole, mitre, scarlet zucchetto. */
-function drawPlaceholder(ctx: CanvasRenderingContext2D, v: VestmentName, pose: Pose, fx: number, fy: number) {
+function drawPlaceholder(ctx: CanvasRenderingContext2D, v: SheetName, pose: Pose, fx: number, fy: number) {
   const pal = PALETTE[v];
   const kneeling = pose.action === 'kneel';
-  const bob = pose.action === 'walk' ? Math.round(Math.abs(Math.sin(pose.t * 10)) * 1) : 0;
+  const bob = pose.action === 'walk' ? Math.round(Math.abs(Math.sin(pose.t * WALK_FPS)) * 1) : 0;
   const h = kneeling ? 9 : 13;
   const x = Math.round(fx);
   const y = Math.round(fy) - bob;
@@ -108,9 +168,14 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, v: VestmentName, pose: P
     const w = 3 + Math.round((i / h) * 3);
     ctx.fillRect(x - w, y - h + i, w * 2 + 1, 1);
   }
-  // Trim: stole (priest), cord (friar), pallium-ish band (bishop, cardinal)
+  // Trim: stole (priest), cord (friar), pallium-ish band (bishop, cardinal), surplice (thurifer)
   ctx.fillStyle = pal.trim;
-  if (v === 'priest') {
+  if (v === 'thurifer') {
+    for (let i = 0; i < Math.ceil(h * 0.55); i++) {
+      const w = 3 + Math.round((i / h) * 3) + 1;
+      ctx.fillRect(x - w, y - h + i, w * 2 + 1, 1);
+    }
+  } else if (v === 'priest') {
     ctx.fillRect(x - 2, y - h + 1, 1, h - 2);
     ctx.fillRect(x + 2, y - h + 1, 1, h - 2);
   } else if (v === 'friar') {

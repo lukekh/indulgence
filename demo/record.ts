@@ -16,16 +16,19 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright';
 import { startCathedral, type Cathedral, type Layout } from './scenario.js';
-import { cameraFor, project } from '../web/src/iso.js';
+import { cameraFor, project, viewportFor } from '../web/src/iso.js';
 import { candleDrawable } from '../web/src/scene.js';
-import type { CandleName } from '../shared/constants.js';
+import { nextPassAt, thurifersBetween } from '../web/src/npc.js';
+import { C, type CandleName } from '../shared/constants.js';
 
 const MODE: 'gif' | 'live' | 'sandbox' = process.argv.includes('--live') ? 'live' : process.argv.includes('--sandbox') ? 'sandbox' : 'gif';
 const HEADLESS = MODE === 'gif' || process.env.DEMO_HEADLESS === '1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const OUT = path.resolve(process.env.DEMO_OUT ?? path.join(HERE, 'out', 'indulgence-demo.gif'));
-const FPS = Number(process.env.DEMO_FPS ?? 12);
+const FPS = Number(process.env.DEMO_FPS ?? 8);
+/** Playback speed of the (slow, minute-long) departure in the GIF. */
+const FAST = Number(process.env.DEMO_DEPART_SPEED ?? 2);
 // 1440 × 900 renders the cathedral at 3× (its base canvas is 480 × 270); 1000 × 660 gives 2×.
 const WIDTH = Number(process.env.DEMO_WIDTH ?? 1440);
 const HEIGHT = Number(process.env.DEMO_HEIGHT ?? 900);
@@ -92,15 +95,22 @@ function run(cmd: string, args: string[], opts: { cwd: string; log: string; env?
 
 /** Page coordinates of things in the viewer, using the renderer's own projection. */
 function aimer(box: { x: number; y: number; width: number; height: number }, own: Layout['own']) {
-  const scale = Math.max(1, Math.floor(Math.min(box.width / 480, box.height / 270)));
-  const offX = Math.floor((box.width - 480 * scale) / 2);
-  const offY = Math.floor((box.height - 270 * scale) / 2);
-  const cam = cameraFor(own.x, own.y);
+  const vp = viewportFor(box.width, box.height);
+  const { scale, offX, offY } = vp;
+  const cam = cameraFor(own.x, own.y, vp);
   const toPage = (bx: number, by: number) => ({ x: box.x + offX + bx * scale, y: box.y + offY + by * scale });
   return {
+    // Aim at the upper body: lower down, the priest kneeling in front can overlap.
     priest: (p: { x: number; y: number }) => {
       const [fx, fy] = project(cam, p.x, p.y);
-      return toPage(fx, fy - 8);
+      return toPage(fx, fy - 20);
+    },
+    /** The thurifer nearest your seat right now, if one is in the nave near you. */
+    thurifer: () => {
+      const near = thurifersBetween(Date.now(), own.x - 30, own.x + 30).sort((a, b) => Math.abs(a.x - own.x) - Math.abs(b.x - own.x))[0];
+      if (!near) return undefined;
+      const [fx, fy] = project(cam, near.x + 1.5, near.y);
+      return toPage(fx, fy - 20);
     },
     candle: (c: Layout['candles'][string]) => {
       const d = candleDrawable(cam, { arcade: c.arcade, slot: c.slot, size: c.size as CandleName, litAt: 0, expiresAt: 0 }, 0, false);
@@ -172,6 +182,13 @@ async function main() {
       return;
     }
 
+    // Start so that a thurifer (one passes every two minutes) enters the view just after the
+    // cathedral opens, and only once the friends who lit votives have walked out.
+    const lead = 16_000;
+    const startAt = nextPassAt(-20, Math.max(Date.now(), cathedral.readyAt) + lead) - lead;
+    if (startAt > Date.now() + 1000) say(`waiting ${Math.round((startAt - Date.now()) / 1000)} s for the votive-lighters to leave and the thurifer to come round`);
+    await sleep(startAt - Date.now());
+
     say(`opening Chrome (${HEADLESS ? 'headless' : 'visible'}${MODE === 'gif' ? ', recording' : ''})`);
     browser = await chromium.launch({ channel: 'chrome', headless: HEADLESS }).catch(() => chromium.launch({ headless: HEADLESS }));
     const page: Page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 });
@@ -204,6 +221,7 @@ async function main() {
     await sleep(900);
 
     const begun = await cathedral.begin(INTENTION, BUDGET); // your priest starts walking in now
+    const begunAt = Date.now();
     await page.evaluate(([t, u]) => (window as any).stage.showBegin(t, u), [begun.text, begun.url] as const);
     let departed = false;
     const praying = (async () => {
@@ -233,18 +251,21 @@ async function main() {
         await page.mouse.move(p.x, p.y, { steps: 18 });
         await sleep(ms);
       };
-      say('scene: friends and their votives');
+      say('scene: friends, their votives and the thurifer');
       await hover(layout.friends.Hildegard && aim.priest(layout.friends.Hildegard), 3400);
       await hover(layout.candles.Bede && aim.candle(layout.candles.Bede), 2700);
       await hover(layout.candles.Clare && aim.candle(layout.candles.Clare), 2700);
+      await hover(aim.thurifer(), 3200);
       await hover({ x: box.x + box.width - 20, y: box.y + 40 }, 2500);
     }
 
+    // Walking in at a solemn 1 tile/s takes up to half a minute; leave only once seated.
+    await sleep(Math.max(0, begunAt + 32_000 - Date.now()));
     say('scene: depart, light a candle, Ite, missa est');
     const fastFrom = Date.now();
     departed = true;
     await cathedral.depart();
-    await sleep(23_500);
+    await sleep(C.PRIEST_REMOVE_AFTER_MS + 3500);
     fast.push([fastFrom, Date.now() - 2500]);
     await page.evaluate(() => (window as any).stage.closeBrowser());
     await sleep(800);
@@ -256,7 +277,7 @@ async function main() {
 
     if (MODE === 'gif') {
       say(`encoding ${frames.length} frames`);
-      const speed = (t: number) => (fast.some(([a, b]) => t >= a && t < b) ? 1.8 : 1);
+      const speed = (t: number) => (fast.some(([a, b]) => t >= a && t < b) ? FAST : 1);
       const list = frames.map((f, i) => {
         const next = frames[i + 1]?.t ?? f.t + 1000 / FPS;
         return `file '${f.file}'\nduration ${((next - f.t) / 1000 / speed(f.t)).toFixed(4)}`;
@@ -271,7 +292,7 @@ async function main() {
           '-f', 'concat',
           '-safe', '0',
           '-i', path.join(tmp, 'frames.txt'),
-          '-vf', `fps=${FPS},split[a][b];[a]palettegen=max_colors=192:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle`,
+          '-vf', `fps=${FPS},split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
           '-loop', '0',
           OUT,
         ],
