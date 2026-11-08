@@ -1,0 +1,7 @@
+Character sprites
+
+No LPC sheets are bundled yet; the viewer draws placeholder priests.
+
+When you add friar.png, priest.png, bishop.png or cardinal.png from the
+Universal LPC Spritesheet Character Generator, paste the contents of the
+credits.txt the generator exports for each sheet below this line.

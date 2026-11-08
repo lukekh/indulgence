@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "indulgence": {
+      "type": "http",
+      "url": "${INDULGENCE_GATE_URL:-https://gate.indulgence.example}/mcp"
+    }
+  }
+}
