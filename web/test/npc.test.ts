@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { C } from '../../shared/constants';
 import { thurifersBetween, thuriferX, nextPassAt, swing, NPC_SPACING, NPC_SPEED } from '../src/npc';
-import { viewportFor, cameraFor, visibleTiles, project } from '../src/iso';
+import { viewportFor, cameraFor, visibleTiles, project } from '../src/view';
 
 const T = Date.UTC(2026, 10, 9, 12, 0, 0);
 
@@ -44,26 +44,21 @@ describe('thurifer', () => {
 describe('full-screen viewport', () => {
   it('covers the whole display with an integer pixel scale', () => {
     const vp = viewportFor(1440, 866);
-    expect(vp.scale).toBe(3);
+    expect(vp.scale).toBe(2);
+    expect(viewportFor(1920, 1080).scale).toBe(3);
     expect(vp.baseW * vp.scale).toBeGreaterThanOrEqual(1440);
     expect(vp.baseH * vp.scale).toBeGreaterThanOrEqual(866);
     expect(viewportFor(390, 844).scale).toBe(1);
   });
 
-  it('draws enough tiles to reach every corner', () => {
+  it('draws enough of the endless nave to reach every edge', () => {
     const vp = viewportFor(1920, 1080);
-    const cam = cameraFor(15, 8, vp);
+    const cam = cameraFor(15, vp);
     const { x0, x1, yMax } = visibleTiles(cam, vp);
-    // Bottom-left and bottom-right corners land on drawn floor.
-    for (const [x, y] of [
-      [x0 + 3, yMax - 2],
-      [x1 - 3, 0],
-    ] as const) {
-      const [sx, sy] = project(cam, x, y);
-      expect(sx).toBeDefined();
-      expect(sy).toBeDefined();
-    }
-    expect(x1 - x0).toBeGreaterThan(60);
-    expect(yMax).toBeGreaterThan(C.DOOR_Y);
+    expect(project(cam, x0, 0)[0]).toBeLessThan(0);
+    expect(project(cam, x1, 0)[0]).toBeGreaterThan(vp.baseW);
+    expect(project(cam, 0, yMax)[1]).toBeGreaterThan(vp.baseH);
+    // Pews continue past the last seated row: the back of the nave is never in view.
+    expect(yMax).toBeGreaterThan(C.ROW_Y.at(-1)!);
   });
 });

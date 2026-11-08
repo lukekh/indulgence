@@ -33,4 +33,4 @@ Needs the SpacetimeDB CLI, Rust (the module is compiled for each run), Google Ch
 | `DEMO_HEADLESS` | | `1` runs `live` headless (for CI) |
 | `DEMO_KEEP_TMP` | | `1` keeps the run folder in `.cache/`: logs, raw frames, ffmpeg list |
 
-The departure, from leaving the pew to the closing card, plays at 2× speed in the GIF. Everything else is real time, including the slow walk in. A run takes about 4 to 5 minutes, most of it waiting for the votive-lighters to walk out and for the thurifer to come round.
+Two stretches play at 2× speed in the GIF: the rest of your walk to the pew after the hover tour, and the departure from leaving the pew to the closing card. Everything else is real time, including the start of the slow walk in. A run takes about 5 minutes, most of it waiting for the votive-lighters to walk out and for the thurifer to come round.

@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { C, seatPos } from '../../shared/constants';
 import { poseAt, along, pathLength, enterPath, departPaths, approachPoint, type PriestPlan } from '../src/motion';
-import { toScreen } from '../src/iso';
+import { cameraFor, project, viewportFor } from '../src/view';
 
 const seat = { bay: 0, row: 1, half: 0, seat: 3 };
 const [sx, sy] = seatPos(0, 1, 0, 3);
 
 describe('projection', () => {
-  it('is 2:1 isometric with 16 × 8 tiles', () => {
-    expect(toScreen(0, 0)).toEqual([0, 0]);
-    expect(toScreen(1, 0)).toEqual([8, 4]);
-    expect(toScreen(0, 1)).toEqual([-8, 4]);
+  it('looks straight up the nave: pews are horizontal, the altar is at the top', () => {
+    const vp = viewportFor(1440, 866);
+    const cam = cameraFor(15, vp);
+    // Across the nave is screen x; toward the altar is up the screen.
+    const [ax, ay] = project(cam, 15, 6);
+    const [bx, by] = project(cam, 26, 6);
+    expect(by).toBe(ay);
+    expect(bx - ax).toBe(11 * C.TILE_W_PX);
+    expect(project(cam, 15, 8)[1] - ay).toBe(2 * C.TILE_H_PX);
+    expect(ax).toBe(Math.round(vp.baseW / 2));
+    // The altar sits just below the top of the screen.
+    expect(project(cam, 17, C.ALTAR_Y[0]!)[1]).toBeLessThan(60);
   });
 });
 
@@ -27,15 +35,14 @@ describe('paths', () => {
     expect(along(path, 99).done).toBe(true);
   });
 
-  it('enters by the door, along the back, up its side aisle and sideways into the pew', () => {
+  it('comes up its side aisle from below the screen and side-steps into the pew', () => {
     const side = C.SIDE_AISLE_X[0]!;
     expect(enterPath(seat)).toEqual([
-      [C.AISLE_CENTRE_X, C.DOOR_Y],
-      [C.AISLE_CENTRE_X, C.BACK_WALK_Y],
-      [side, C.BACK_WALK_Y],
+      [side, C.ENTRY_Y],
       [side, sy],
       [sx, sy],
     ]);
+    expect(enterPath({ ...seat, entryY: 40 })[0]).toEqual([side, 40]);
     // Pews span the nave between the side aisles.
     expect(C.PEW_X[0]).toBeGreaterThan(side);
     expect(C.PEW_X[1]).toBeLessThan(C.SIDE_AISLE_X[1]!);
@@ -46,7 +53,7 @@ describe('paths', () => {
     const { toStand, toDoor, approach } = departPaths(plan);
     expect(toStand[1]).toEqual([C.SIDE_AISLE_X[0], sy]);
     expect(toStand.at(-1)).toEqual(approach);
-    expect(toDoor.at(-1)).toEqual([C.AISLE_CENTRE_X, C.DOOR_Y]);
+    expect(toDoor.at(-1)![1]).toBe(C.ENTRY_Y);
     // Right-half priests go to the next arcade and approach it from the west.
     expect(approachPoint(0, 1, 0)[0]).toBeLessThan(C.BAY_W + C.STAND_CENTRE_X);
   });
@@ -56,7 +63,7 @@ describe('poses over time', () => {
   it('walks in at WALK_TILES_PER_S (slowly), then kneels facing the altar', () => {
     const plan: PriestPlan = { ...seat, state: 'Entering', since: 1000 };
     const walkMs = (pathLength(enterPath(seat)) / C.WALK_TILES_PER_S) * 1000;
-    expect(poseAt(plan, 1000)).toMatchObject({ x: C.AISLE_CENTRE_X, y: C.DOOR_Y, action: 'walk', dir: 'up' });
+    expect(poseAt(plan, 1000)).toMatchObject({ x: C.SIDE_AISLE_X[0], y: C.ENTRY_Y, action: 'walk', dir: 'up' });
     expect(poseAt(plan, 1000 + walkMs + 10)).toMatchObject({ x: sx, y: sy, action: 'kneel', dir: 'up' });
   });
 

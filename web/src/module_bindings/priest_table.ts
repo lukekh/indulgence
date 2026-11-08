@@ -30,5 +30,6 @@ export default __t.row({
     return PriestState;
   },
   stateSince: __t.timestamp().name("state_since"),
+  enteredAt: __t.timestamp().name("entered_at"),
   candleId: __t.u64().name("candle_id"),
 });

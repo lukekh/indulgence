@@ -119,6 +119,7 @@ export const Priest = __t.object("Priest", {
     return PriestState;
   },
   stateSince: __t.timestamp(),
+  enteredAt: __t.timestamp(),
   candleId: __t.u64(),
 });
 export type Priest = __Infer<typeof Priest>;

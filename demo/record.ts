@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright';
 import { startCathedral, type Cathedral, type Layout } from './scenario.js';
-import { cameraFor, project, viewportFor } from '../web/src/iso.js';
+import { bayCentreX, cameraFor, project, viewportFor, visibleTiles } from '../web/src/view.js';
 import { candleDrawable } from '../web/src/scene.js';
 import { nextPassAt, thurifersBetween } from '../web/src/npc.js';
 import { C, type CandleName } from '../shared/constants.js';
@@ -97,7 +97,7 @@ function run(cmd: string, args: string[], opts: { cwd: string; log: string; env?
 function aimer(box: { x: number; y: number; width: number; height: number }, own: Layout['own']) {
   const vp = viewportFor(box.width, box.height);
   const { scale, offX, offY } = vp;
-  const cam = cameraFor(own.x, own.y, vp);
+  const cam = cameraFor(bayCentreX(own.x), vp);
   const toPage = (bx: number, by: number) => ({ x: box.x + offX + bx * scale, y: box.y + offY + by * scale });
   return {
     // Aim at the upper body: lower down, the priest kneeling in front can overlap.
@@ -244,6 +244,17 @@ async function main() {
 
     const layout = await cathedral.layout();
     const box = await view.boundingBox();
+    // Your walk in: up the side aisle from just below the screen, then along the pew.
+    let seatedAt = begunAt + 45_000;
+    if (box) {
+      const vp = viewportFor(box.width, box.height);
+      const cam = cameraFor(bayCentreX(layout.own.x), vp);
+      const entryY = Math.max(C.ENTRY_Y, visibleTiles(cam, vp).yMax + 2);
+      const bayStart = bayCentreX(layout.own.x) - C.AISLE_CENTRE_X;
+      const side = bayStart + (layout.own.x < bayCentreX(layout.own.x) ? C.SIDE_AISLE_X[0]! : C.SIDE_AISLE_X[1]!);
+      const tiles = entryY - layout.own.y + Math.abs(layout.own.x - side);
+      seatedAt = begunAt + (tiles / C.WALK_TILES_PER_S) * 1000;
+    }
     if (box) {
       const aim = aimer(box, layout.own);
       const hover = async (p: { x: number; y: number } | undefined, ms: number) => {
@@ -259,8 +270,11 @@ async function main() {
       await hover({ x: box.x + box.width - 20, y: box.y + 40 }, 2500);
     }
 
-    // Walking in at a solemn 1 tile/s takes up to half a minute; leave only once seated.
-    await sleep(Math.max(0, begunAt + 32_000 - Date.now()));
+    // Walking in at a solemn 1 tile/s takes most of a minute; leave only once seated.
+    // The rest of the walk plays at the departure's speed in the GIF.
+    const waitFrom = Date.now();
+    await sleep(Math.max(0, seatedAt + 6000 - Date.now()));
+    if (Date.now() - waitFrom > 3000) fast.push([waitFrom, Date.now() - 3000]);
     say('scene: depart, light a candle, Ite, missa est');
     const fastFrom = Date.now();
     departed = true;

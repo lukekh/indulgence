@@ -240,6 +240,8 @@ pub struct Priest {
     pub vestment: Vestment,
     pub state: PriestState,
     pub state_since: Timestamp,
+    /// When it came in, so viewers who connect mid-walk can finish the walk to its pew.
+    pub entered_at: Timestamp,
     /// The candle this priest lights on departure (0 until departing).
     pub candle_id: u64,
 }
@@ -698,6 +700,7 @@ pub fn enter(
         vestment: vestment_for(geometry::spend_tier(budget)),
         state: PriestState::Entering,
         state_since: ctx.timestamp,
+        entered_at: ctx.timestamp,
         candle_id: 0,
     });
 

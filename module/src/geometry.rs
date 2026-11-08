@@ -294,9 +294,10 @@ mod tests {
         assert_eq!(percentile(10, &[1, 2, 3]), 1.0);
         assert_eq!(percentile(1, &[5, 6]), 0.0);
         assert_eq!(percentile(5, &[5, 5]), 0.5);
+        let last = ROWS - 1;
         assert_eq!(target_row(1.0), 0);
-        assert_eq!(target_row(0.0), 3);
-        assert_eq!(target_row(0.5), 2); // round(1.5) = 2
+        assert_eq!(target_row(0.0), last);
+        assert_eq!(target_row(0.5), ((last as f64) * 0.5).round() as u8);
     }
 
     #[test]
@@ -315,7 +316,7 @@ mod tests {
         let mut w = World::default();
         let mut rng = TestRng(3);
         assert_eq!(w.seat(0, &[], 1.0, &mut rng).row, 0);
-        assert_eq!(w.seat(1, &[], 0.0, &mut rng).row, 3);
+        assert_eq!(w.seat(1, &[], 0.0, &mut rng).row, ROWS - 1);
     }
 
     #[test]
@@ -424,18 +425,19 @@ mod tests {
     fn spread_mutuals_never_strand_newcomer_between_them() {
         let mut w = World::default();
         let mut rng = TestRng(9);
-        for who in 0..(5 * c::BAY_SOFT_CAP as usize) {
+        // Two unrelated friends far apart, in bays 0 and 2, among a few strangers.
+        w.seats.insert(SeatAddr { bay: 0, row: 2, half: LEFT, i: 3 }, 1);
+        w.seats.insert(SeatAddr { bay: 2, row: 5, half: RIGHT, i: 2 }, 2);
+        for who in 10..40 {
             w.seat(who, &[], 0.5, &mut rng);
         }
-        // Two unrelated friends far apart.
-        let a = 3; // in bay 0
-        let far = (0..5 * c::BAY_SOFT_CAP as usize)
-            .find(|who| bay_of_x(w.pos_of(*who).0) == 2)
-            .unwrap();
-        let me = w.seat(9999, &[a, far], 0.5, &mut rng);
-        let p = seat_pos(me);
-        let nearest = [a, far].iter().map(|m| manhattan(p, w.pos_of(*m))).min().unwrap();
-        assert!(nearest <= 4);
+        for _ in 0..20 {
+            let me = w.seat(9999, &[1, 2], 0.5, &mut rng);
+            let p = seat_pos(me);
+            let nearest = [1, 2].iter().map(|m| manhattan(p, w.pos_of(*m))).min().unwrap();
+            assert!(nearest <= 4, "newcomer {nearest} tiles from both friends");
+            w.seats.remove(&me);
+        }
     }
 
     #[test]

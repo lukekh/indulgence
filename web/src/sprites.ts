@@ -34,6 +34,8 @@ export function vestmentName(tag: string): VestmentName {
 
 export class PriestSprites {
   private sheets = new Map<SheetName, HTMLCanvasElement>();
+  /** Each sheet as a flat pale silhouette, drawn offset by a pixel to outline the figure. */
+  private outlines = new Map<SheetName, HTMLCanvasElement>();
 
   static async load(base = '/sprites'): Promise<PriestSprites> {
     const s = new PriestSprites();
@@ -42,7 +44,9 @@ export class PriestSprites {
         try {
           const img = await loadImage(`${base}/${v}.png`);
           if (img.width < 13 * FRAME || img.height < 34 * FRAME) return;
-          s.sheets.set(v, downscale(img, SPRITE_SCALE));
+          const sheet = downscale(img, SPRITE_SCALE);
+          s.sheets.set(v, sheet);
+          s.outlines.set(v, silhouette(sheet, OUTLINE));
         } catch {
           // No sheet for this vestment yet: draw the placeholder.
         }
@@ -64,9 +68,13 @@ export class PriestSprites {
    * in cassock and white surplice. Returns where the thurible's bowl is.
    */
   drawThurifer(ctx: CanvasRenderingContext2D, pose: Pose, fx: number, fy: number, s: ThuribleState): [number, number] {
-    const sheet = this.sheets.get('thurifer') ?? this.sheets.get('priest');
-    if (sheet) drawFromSheet(ctx, sheet, pose, fx, fy);
-    else drawPlaceholder(ctx, 'thurifer', pose, fx, fy);
+    const name: SheetName = this.sheets.has('thurifer') ? 'thurifer' : 'priest';
+    const sheet = this.sheets.get(name);
+    if (sheet) {
+      const outline = this.outlines.get(name)!;
+      for (const [dx, dy] of OUTLINE_OFFSETS) drawFromSheet(ctx, outline, pose, fx + dx, fy + dy);
+      drawFromSheet(ctx, sheet, pose, fx, fy);
+    } else drawPlaceholder(ctx, 'thurifer', pose, fx, fy);
     const [ox, oy] = handOffset(!!sheet);
     return drawThurible(ctx, Math.round(fx + ox), Math.round(fy + oy), s);
   }
@@ -77,8 +85,11 @@ export class PriestSprites {
     ctx.save();
     ctx.globalAlpha = pose.alpha;
     const sheet = this.sheets.get(v);
-    if (sheet) drawFromSheet(ctx, sheet, pose, fx, fy);
-    else drawPlaceholder(ctx, v, pose, fx, fy);
+    if (sheet) {
+      const outline = this.outlines.get(v)!;
+      for (const [dx, dy] of OUTLINE_OFFSETS) drawFromSheet(ctx, outline, pose, fx + dx, fy + dy);
+      drawFromSheet(ctx, sheet, pose, fx, fy);
+    } else drawPlaceholder(ctx, v, pose, fx, fy);
     ctx.restore();
   }
 }
@@ -229,6 +240,26 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error(`missing ${src}`));
     img.src = src;
   });
+}
+
+const OUTLINE = '#9a958b';
+const OUTLINE_OFFSETS: [number, number][] = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+];
+
+/** The sheet's shape filled with one colour. */
+function silhouette(sheet: HTMLCanvasElement, colour: string): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = sheet.width;
+  c.height = sheet.height;
+  const ctx = c.getContext('2d')!;
+  ctx.drawImage(sheet, 0, 0);
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = colour;
+  ctx.fillRect(0, 0, c.width, c.height);
+  return c;
 }
 
 /** Scale a whole sheet once, averaging pixels, so per-frame draws are 1:1. */

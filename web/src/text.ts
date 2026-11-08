@@ -1,7 +1,27 @@
 // All dynamic text is drawn with canvas fillText. No string from the database ever goes
 // into the DOM.
+//
+// Prayers float over the scene with no bubble or box: white for everyone, except your own
+// priest, who speaks in gold with the shimmer from TuringOS: a pale band sweeping through
+// the gold every 3.4 s, over a soft two-layer gold glow.
 
-export const SERIF = "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif";
+export const MONO = '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace';
+
+export const GOLD = 'rgb(222, 180, 89)';
+/** The sweep: rgb(255 244 208 / 82%) over the gold. */
+const SHEEN = 'rgb(251, 236, 187)';
+const SHIMMER_MS = 3400;
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export function overlaps(a: Rect, b: Rect, pad = 2): boolean {
+  return a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
+}
 
 export function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const words = text.split(/\s+/).filter(Boolean);
@@ -19,142 +39,147 @@ export function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: numb
   return lines;
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+/** Plain white text with a hard dark drop shadow, so it reads over any part of the scene. */
+function whiteText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, px: number, alpha: number) {
+  const o = Math.max(1, Math.round(px / 12));
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+  ctx.fillText(text, x + o, y + o);
+  ctx.fillStyle = '#f2f0ea';
+  ctx.fillText(text, x, y);
+  ctx.globalAlpha = 1;
 }
 
-export interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+/**
+ * Gold text with the TuringOS shimmer. `left` and `width` describe the whole block the line
+ * belongs to, so every line of one prayer shows its slice of the same sweeping band.
+ */
+export function goldText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, px: number, now: number, left: number, width: number, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // Halo: 0 0 5px gold at 55%, then 0 0 13px gold at 30%.
+  const dpr = px / 14;
+  ctx.fillStyle = GOLD;
+  ctx.shadowColor = 'rgba(222, 180, 89, 0.55)';
+  ctx.shadowBlur = 5 * dpr;
+  ctx.fillText(text, x, y);
+  ctx.shadowColor = 'rgba(222, 180, 89, 0.30)';
+  ctx.shadowBlur = 13 * dpr;
+  ctx.fillText(text, x, y);
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
+  // The sheen: a band twice the block's width, sweeping right to left (100deg), 34%–66% wide.
+  const period = Math.max(width, 120) * 2;
+  const phase = (now % SHIMMER_MS) / SHIMMER_MS;
+  const start = left + width + period * 0.5 - phase * (width + period * 1.5);
+  const tilt = Math.tan((10 * Math.PI) / 180) * px;
+  const grad = ctx.createLinearGradient(start, y + tilt, start + period, y - tilt);
+  grad.addColorStop(0, GOLD);
+  grad.addColorStop(0.34, GOLD);
+  grad.addColorStop(0.5, SHEEN);
+  grad.addColorStop(0.66, GOLD);
+  grad.addColorStop(1, GOLD);
+  ctx.fillStyle = grad;
+  ctx.fillText(text, x, y);
+  ctx.restore();
 }
 
-export function overlaps(a: Rect, b: Rect, pad = 2): boolean {
-  return a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
-}
-
-export interface BubbleLayout {
+export interface PrayerLayout {
   rect: Rect;
   lines: string[];
   px: number;
-  tail: [number, number];
   own: boolean;
 }
 
-/** Measure a speech bubble whose tail points at (x, y), showing the last `maxLines` lines. */
-export function layoutBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, px: number, maxLines = 3, own = false): BubbleLayout | undefined {
+/** Lay out a prayer above (cx, bottom): its last `maxLines` lines, centred. */
+export function layoutPrayer(ctx: CanvasRenderingContext2D, cx: number, bottom: number, text: string, px: number, maxLines: number, own: boolean): PrayerLayout | undefined {
   ctx.save();
-  ctx.font = `italic ${px}px ${SERIF}`;
-  const maxW = px * 16;
-  const lines = wrap(ctx, text, maxW).slice(-maxLines);
-  const w = lines.length ? Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width))) + px : 0;
+  ctx.font = `${own ? 600 : 400} ${px}px ${MONO}`;
+  const lines = wrap(ctx, text, px * 26).slice(-maxLines);
+  const w = lines.length ? Math.max(...lines.map((l) => ctx.measureText(l).width)) : 0;
   ctx.restore();
   if (!lines.length) return undefined;
-  const h = lines.length * px * 1.25 + px * 0.6;
-  return { rect: { x: Math.round(x - w / 2), y: Math.round(y - h - px * 0.8), w, h }, lines, px, tail: [x, y], own };
+  const h = lines.length * px * 1.3;
+  return { rect: { x: Math.round(cx - w / 2), y: Math.round(bottom - h), w, h }, lines, px, own };
 }
 
-export function drawBubble(ctx: CanvasRenderingContext2D, b: BubbleLayout) {
-  const { rect: r, px, lines } = b;
+export function drawPrayer(ctx: CanvasRenderingContext2D, p: PrayerLayout, now: number, alpha = 1) {
   ctx.save();
-  ctx.font = `italic ${px}px ${SERIF}`;
-  ctx.fillStyle = b.own ? 'rgba(255, 246, 222, 0.96)' : 'rgba(246, 238, 220, 0.9)';
-  ctx.strokeStyle = 'rgba(60, 40, 20, 0.6)';
-  ctx.lineWidth = Math.max(1, px / 12);
-  ctx.beginPath();
-  const tx = Math.max(r.x + px * 0.5, Math.min(r.x + r.w - px * 0.5, b.tail[0]));
-  ctx.moveTo(tx - px * 0.35, r.y + r.h - 1);
-  ctx.lineTo(b.tail[0], b.tail[1] - px * 0.2);
-  ctx.lineTo(tx + px * 0.35, r.y + r.h - 1);
-  ctx.fill();
-  roundRect(ctx, r.x, r.y, r.w, r.h, px * 0.4);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = '#2b1d12';
+  ctx.font = `${p.own ? 600 : 400} ${p.px}px ${MONO}`;
   ctx.textBaseline = 'top';
-  lines.forEach((l, i) => ctx.fillText(l, r.x + px / 2, r.y + px * 0.3 + i * px * 1.25));
+  p.lines.forEach((line, i) => {
+    const lw = ctx.measureText(line).width;
+    const x = Math.round(p.rect.x + (p.rect.w - lw) / 2);
+    const y = Math.round(p.rect.y + i * p.px * 1.3);
+    if (p.own) goldText(ctx, line, x, y, p.px, now, p.rect.x, p.rect.w, alpha);
+    else whiteText(ctx, line, x, y, p.px, alpha);
+  });
   ctx.restore();
 }
 
 export function measureTag(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, px: number): Rect {
   ctx.save();
-  ctx.font = `600 ${px}px ${SERIF}`;
+  ctx.font = `600 ${px}px ${MONO}`;
   const w = ctx.measureText(text).width;
   ctx.restore();
   return { x: x - w / 2, y: y - px, w, h: px };
 }
 
-export function nameTag(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, px: number, color = '#f3dfa8') {
+/** A name above a priest: white, or shimmering gold for your own. */
+export function nameTag(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, px: number, own: boolean, now: number) {
   ctx.save();
-  ctx.font = `600 ${px}px ${SERIF}`;
-  ctx.textAlign = 'center';
+  ctx.font = `600 ${px}px ${MONO}`;
   ctx.textBaseline = 'bottom';
-  ctx.lineWidth = Math.max(2, px / 4);
-  ctx.strokeStyle = 'rgba(20, 12, 8, 0.85)';
-  ctx.strokeText(text, x, y);
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
+  const w = ctx.measureText(text).width;
+  const left = Math.round(x - w / 2);
+  if (own) goldText(ctx, text, left, Math.round(y), px, now, left, w);
+  else whiteText(ctx, text, left, Math.round(y), px, 0.9);
   ctx.restore();
 }
 
-/** Hover card near (x, y), kept on screen. */
-export function card(ctx: CanvasRenderingContext2D, x: number, y: number, title: string, body: string, footer: string, px: number) {
+/** Hover details, written straight onto the scene beside the cursor. */
+export function hoverText(ctx: CanvasRenderingContext2D, x: number, y: number, title: string, body: string, footer: string, px: number, own: boolean, now: number) {
   ctx.save();
-  const maxW = px * 24;
-  ctx.font = `${px}px ${SERIF}`;
-  const lines = body ? wrap(ctx, body, maxW) : [];
-  ctx.font = `600 ${px * 1.1}px ${SERIF}`;
-  const tw = ctx.measureText(title).width;
-  ctx.font = `${px}px ${SERIF}`;
-  const w = Math.min(maxW, Math.max(tw, ...lines.map((l) => ctx.measureText(l).width), footer ? ctx.measureText(footer).width : 0)) + px * 1.4;
+  ctx.font = `${px}px ${MONO}`;
+  const lines = body ? wrap(ctx, body, px * 30) : [];
   const lh = px * 1.3;
-  const h = px * 1.6 + lines.length * lh + (footer ? lh * 1.2 : 0) + px * 0.6;
-  const cw = ctx.canvas.width;
-  const ch = ctx.canvas.height;
-  const bx = Math.max(px, Math.min(cw - w - px, x + px));
-  const by = Math.max(px, Math.min(ch - h - px, y - h - px));
-  ctx.fillStyle = 'rgba(24, 18, 14, 0.94)';
-  ctx.strokeStyle = 'rgba(212, 165, 49, 0.7)';
-  ctx.lineWidth = Math.max(1, px / 12);
-  roundRect(ctx, bx, by, w, h, px * 0.3);
-  ctx.fill();
-  ctx.stroke();
+  const h = lh * (lines.length + 1 + (footer ? 1 : 0)) + px;
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width), ctx.measureText(title).width, footer ? ctx.measureText(footer).width : 0);
+  const left = Math.max(px, Math.min(ctx.canvas.width - w - px, x + px * 1.5));
+  const top = Math.max(px, Math.min(ctx.canvas.height - h - px, y - h / 2));
   ctx.textBaseline = 'top';
-  ctx.fillStyle = '#f3dfa8';
-  ctx.font = `600 ${px * 1.1}px ${SERIF}`;
-  ctx.fillText(title, bx + px * 0.7, by + px * 0.5);
-  ctx.fillStyle = '#e9e0cf';
-  ctx.font = `italic ${px}px ${SERIF}`;
-  lines.forEach((l, i) => ctx.fillText(l, bx + px * 0.7, by + px * 1.9 + i * lh));
+  ctx.font = `700 ${px}px ${MONO}`;
+  if (own) goldText(ctx, title, left, top, px, now, left, w);
+  else whiteText(ctx, title, left, top, px, 1);
+  ctx.font = `${px}px ${MONO}`;
+  lines.forEach((l, i) => {
+    if (own) goldText(ctx, l, left, top + lh * (i + 1), px, now, left, w);
+    else whiteText(ctx, l, left, top + lh * (i + 1), px, 0.95);
+  });
   if (footer) {
-    ctx.fillStyle = '#a89780';
-    ctx.font = `${px * 0.9}px ${SERIF}`;
-    ctx.fillText(footer, bx + px * 0.7, by + px * 1.9 + lines.length * lh + px * 0.3);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillText(footer, left + 1, top + lh * (lines.length + 1) + 1);
+    ctx.fillStyle = '#8f8a80';
+    ctx.fillText(footer, left, top + lh * (lines.length + 1));
   }
   ctx.restore();
 }
 
-export function closingCard(ctx: CanvasRenderingContext2D, alpha: number, title: string, subtitle: string) {
+export function closingCard(ctx: CanvasRenderingContext2D, alpha: number, title: string, subtitle: string, now: number) {
   const { width: w, height: h } = ctx.canvas;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#0c0907';
+  ctx.fillStyle = '#0a0909';
   ctx.fillRect(0, 0, w, h);
-  const px = Math.max(24, Math.min(w, h) / 12);
-  ctx.textAlign = 'center';
+  const px = Math.max(22, Math.round(Math.min(w, h) / 13));
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#e8c872';
-  ctx.font = `italic ${px}px ${SERIF}`;
-  ctx.fillText(title, w / 2, h / 2 - px * 0.3);
-  ctx.fillStyle = '#a89780';
-  ctx.font = `${px * 0.35}px ${SERIF}`;
-  ctx.fillText(subtitle, w / 2, h / 2 + px * 0.7);
+  ctx.font = `600 ${px}px ${MONO}`;
+  const tw = ctx.measureText(title).width;
+  goldText(ctx, title, Math.round(w / 2 - tw / 2), Math.round(h / 2 - px * 0.4), px, now, w / 2 - tw / 2, tw, alpha);
+  ctx.font = `${Math.round(px * 0.34)}px ${MONO}`;
+  const sw = ctx.measureText(subtitle).width;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#8f8a80';
+  ctx.fillText(subtitle, Math.round(w / 2 - sw / 2), Math.round(h / 2 + px * 0.7));
   ctx.restore();
 }

@@ -4,31 +4,36 @@
 import { C, type CandleName, type VestmentName } from '../../shared/constants';
 import { DbConnection } from './module_bindings';
 import type { Priest, PrayerTick, Candle } from './module_bindings/types';
-import { cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Drawable, type Viewport, type Camera } from './iso';
+import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Drawable, type Viewport, type Camera } from './view';
 import { poseAt, type PriestPlan, type Pose } from './motion';
-import { drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, type CandleView, type Light } from './scene';
+import { drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, type CandleView, type Light } from './scene';
+import { ditherFrame } from './dither';
 import { PriestSprites, vestmentName, thuriferHand, thuribleBowl } from './sprites';
 import { thurifersBetween, thuriferX, swing, NPC_LANE_Y, THURIFER_PRAYER } from './npc';
-import { card, closingCard, drawBubble, layoutBubble, measureTag, nameTag, overlaps, type Rect } from './text';
+import { closingCard, drawPrayer, hoverText, layoutPrayer, measureTag, nameTag, overlaps, type Rect } from './text';
 import { cannedPrayer } from './canned';
 import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, type ViewerGrant } from './net';
 
 const SLOT = C.PACING_SLOT_MS;
 /** How bright the nave is away from any candle (0 … 1). */
-const AMBIENT = 0.3;
+const AMBIENT = 0.42;
 /** Height of a priest sprite above its feet, base px (LPC sheets are drawn at half size). */
 const HEAD = 30;
 const RETRY_FOR_MS = 120_000;
-const STRANGER_BUBBLES = 3;
+/** Strangers nearest you whose (canned) prayers are written over the scene. */
+const STRANGER_PRAYERS = 2;
 
 const display = document.getElementById('view') as HTMLCanvasElement;
 const dctx = display.getContext('2d')!;
 const base = document.createElement('canvas');
-const bctx = base.getContext('2d')!;
+const bctx = base.getContext('2d', { willReadFrequently: true })!;
 // Floor and back wall never move (the camera is fixed on your seat): drawn once per camera.
 const staticLayer = document.createElement('canvas');
 const sctx = staticLayer.getContext('2d')!;
 let staticKey = '';
+// Coloured light from the vault, kept apart so the dither can tint by it.
+const rayLayer = document.createElement('canvas');
+const rctx = rayLayer.getContext('2d', { willReadFrequently: true })!;
 
 const ms = (t: { microsSinceUnixEpoch: bigint }) => Number(t.microsSinceUnixEpoch / 1000n);
 
@@ -46,7 +51,6 @@ let ownId = 0n;
 let sprites: PriestSprites | undefined;
 let subscribed = false;
 
-const enteredAt = new Map<bigint, number>();
 const muted = new Set<bigint>();
 let mouse: { x: number; y: number } | undefined;
 let hovered: { kind: 'priest'; id: bigint } | { kind: 'candle'; id: bigint } | { kind: 'thurifer'; id: number } | undefined;
@@ -131,11 +135,7 @@ function connect(g: ViewerGrant) {
     })
     .build();
 
-  conn.db.priest.onInsert((_ctx, p) => {
-    if (p.state.tag === 'Entering') enteredAt.set(p.priestId, ms(p.stateSince));
-  });
   conn.db.priest.onDelete((_ctx, p) => {
-    enteredAt.delete(p.priestId);
     if (p.priestId === ownId) closeWith('Ite, missa est', 'Your candle is lit.');
   });
 
@@ -166,7 +166,7 @@ interface PriestView {
   label?: string;
 }
 
-function planOf(p: Priest): PriestPlan {
+function planOf(p: Priest, entryY: number): PriestPlan {
   let candle: PriestPlan['candle'];
   if (p.state.tag === 'Departing' && p.candleId !== 0n) {
     const c = conn?.db.candle.candleId.find(p.candleId);
@@ -183,8 +183,9 @@ function planOf(p: Priest): PriestPlan {
     seat: p.seat,
     state: p.state.tag as PriestPlan['state'],
     since: ms(p.stateSince),
-    enteredAt: enteredAt.get(p.priestId),
+    enteredAt: ms(p.enteredAt),
     candle,
+    entryY,
   };
 }
 
@@ -201,23 +202,23 @@ function frame() {
   resize();
   const t = now();
   const vp: Viewport = viewportFor(display.width, display.height);
-  const { scale, offX, offY } = vp;
-  if (base.width !== vp.baseW || base.height !== vp.baseH) {
-    base.width = vp.baseW;
-    base.height = vp.baseH;
+  const { scale, offX, offY, baseW, baseH } = vp;
+  if (base.width !== baseW || base.height !== baseH) {
+    base.width = rayLayer.width = baseW;
+    base.height = rayLayer.height = baseH;
   }
   const toDisplay = (bx: number, by: number): [number, number] => [offX + bx * scale, offY + by * scale];
-  const textPx = Math.max(11, Math.round(scale * 5.5));
+  const textPx = Math.max(13, Math.round(scale * 5.5));
 
-  dctx.fillStyle = '#0c0907';
+  dctx.fillStyle = '#0a0909';
   dctx.fillRect(0, 0, display.width, display.height);
 
   if (phase === 'no-ticket') {
-    closingCard(dctx, 1, closingTitle, closingSubtitle);
+    closingCard(dctx, 1, closingTitle, closingSubtitle, Date.now());
     return;
   }
   if (!conn || !subscribed) {
-    closingCard(dctx, 1, '/indulgence', 'Entering the cathedral…');
+    closingCard(dctx, 1, '/indulgence', 'Entering the cathedral…', Date.now());
     return;
   }
 
@@ -225,34 +226,35 @@ function frame() {
   if (own?.state.tag === 'Departing' && phase !== 'closing' && phase !== 'closed' && t - ms(own.stateSince) > C.PRIEST_REMOVE_AFTER_MS) {
     closeWith('Ite, missa est', 'Your candle is lit.');
   }
-  const focus = own ? [own.x, own.y] : [grant!.px, C.ROW_Y[1]!];
-  const cam = cameraFor(focus[0]!, focus[1]!, vp);
+  // Your bay's altar at the top centre of the screen; pews run on past the bottom.
+  const cam = cameraFor(bayCentreX(own ? own.x : grant!.px), vp);
   const { x0, x1, yMax } = visibleTiles(cam, vp);
+  const entryY = Math.max(C.ENTRY_Y, yMax + 2);
 
-  // --- base layer -----------------------------------------------------------
-  const key = `${cam.ox},${cam.oy},${vp.baseW},${vp.baseH}`;
+  // --- scene, in grey -------------------------------------------------------------
+  const key = `${cam.ox},${cam.oy},${baseW},${baseH}`;
   if (key !== staticKey) {
-    staticLayer.width = vp.baseW;
-    staticLayer.height = vp.baseH;
-    drawStatic(sctx, cam, x0, x1, yMax, vp.baseW, vp.baseH);
+    staticLayer.width = baseW;
+    staticLayer.height = baseH;
+    drawStatic(sctx, cam, x0, x1, yMax, baseW, baseH);
     staticKey = key;
   }
   bctx.imageSmoothingEnabled = false;
   bctx.drawImage(staticLayer, 0, 0);
-  const drawables: Drawable[] = furniture(cam, x0, x1);
+  const drawables: Drawable[] = furniture(cam, x0, x1, yMax);
 
   const labels = new Map<bigint, string>();
   for (const l of conn.db.viewerLabel.iter()) labels.set(l.priestId, l.label);
 
   const priests: PriestView[] = [];
   for (const p of conn.db.priest.iter()) {
-    const pose = poseAt(planOf(p), t);
+    const pose = poseAt(planOf(p, entryY), t);
     if (pose.action === 'gone') continue;
     const feet = project(cam, pose.x, pose.y);
     const view: PriestView = { row: p, pose, feet, label: labels.get(p.priestId) };
     priests.push(view);
     const v: VestmentName = vestmentName(p.vestment.tag);
-    drawables.push({ depth: pose.x + pose.y, layer: LAYER.priest, draw: (ctx) => sprites!.draw(ctx, v, pose, feet[0], feet[1]) });
+    drawables.push({ depth: pose.y, layer: LAYER.priest, x: pose.x, draw: (ctx: CanvasRenderingContext2D) => sprites!.draw(ctx, v, pose, feet[0], feet[1]) });
   }
 
   const candles: (CandleView & { row: Candle; hit: [number, number, number, number] })[] = [];
@@ -269,19 +271,24 @@ function frame() {
     candles.push({ ...view, row: c, hit: d.hit });
   }
 
-  // The thurifer processes along the front gap, every two minutes at any one place.
+  // The thurifer processes across the front of the nave, every two minutes at any one place.
   const thurifers = thurifersBetween(t, x0, x1).map((th) => {
     const feet = project(cam, th.x, th.y);
     const pose: Pose = { x: th.x, y: th.y, dir: 'right', action: 'walk', t: t / 1000, alpha: 1 };
-    drawables.push({ depth: th.x + th.y, layer: LAYER.priest, draw: (ctx) => void sprites!.drawThurifer(ctx, pose, feet[0], feet[1], { swing: swing(t) }) });
+    drawables.push({
+      depth: th.y,
+      layer: LAYER.priest,
+      x: th.x,
+      draw: (ctx: CanvasRenderingContext2D) => void sprites!.drawThurifer(ctx, pose, feet[0], feet[1], { swing: swing(t) }),
+    });
     return { ...th, feet };
   });
 
   for (const d of sortDrawables(drawables)) d.draw(bctx);
   for (const th of thurifers) drawSmoke(bctx, cam, th.j, t);
 
-  // Dark nave, dim candlelight: stands, pew ends, column sconces, altars, the thurible.
-  const lights: Light[] = fixedLights(cam, x0, x1);
+  // --- candlelight, coloured shafts, dither ---------------------------------------------
+  const lights: Light[] = fixedLights(cam, x0, x1, yMax);
   const litFlames: [number, number, number][] = [];
   for (const c of candles) {
     if (c.litAt > t) continue;
@@ -294,20 +301,21 @@ function frame() {
     const [bx, by] = thuribleBowl(hx, hy, swing(t));
     lights.push({ x: bx, y: by, r: 18, power: 0.3 });
   }
-  applyLighting(bctx, vp.baseW, vp.baseH, lights, AMBIENT);
-  drawFixedFlames(bctx, cam, x0, x1, t);
+  applyLighting(bctx, baseW, baseH, lights, AMBIENT);
+  drawRays(rctx, cam, x0, x1, baseW, baseH, Math.floor(t / 2000) * 2000);
+  ditherFrame(bctx, baseW, baseH, rctx.getImageData(0, 0, baseW, baseH).data);
+  drawFixedFlames(bctx, cam, x0, x1, yMax, t);
   for (const [fx, fy, seed] of litFlames) drawFlame(bctx, fx, fy, t, seed);
-  vignette(bctx, vp);
 
   dctx.imageSmoothingEnabled = false;
-  dctx.drawImage(base, offX, offY, vp.baseW * scale, vp.baseH * scale);
+  dctx.drawImage(base, offX, offY, baseW * scale, baseH * scale);
 
   // --- hit testing ------------------------------------------------------------------
   hovered = undefined;
   if (mouse) {
     const bx = (mouse.x - offX) / scale;
     const by = (mouse.y - offY) / scale;
-    const byDepth = [...priests].sort((a, b) => b.pose.x + b.pose.y - (a.pose.x + a.pose.y));
+    const byDepth = [...priests].sort((a, b) => b.pose.y - a.pose.y);
     const hitP = byDepth.find((p) => Math.abs(bx - p.feet[0]) <= 7 && by <= p.feet[1] + 1 && by >= p.feet[1] - HEAD);
     const hitT = thurifers.find((th) => Math.abs(bx - th.feet[0]) <= 8 && by <= th.feet[1] + 1 && by >= th.feet[1] - HEAD);
     if (hitP) hovered = { kind: 'priest', id: hitP.row.priestId };
@@ -319,22 +327,23 @@ function frame() {
   }
   display.style.cursor = hovered?.kind === 'priest' && hovered.id !== ownId ? 'pointer' : 'default';
 
-  // --- overlay text -------------------------------------------------------------------
-  const ownPos = own ? [own.x, own.y] : focus;
+  // --- words over the scene ------------------------------------------------------------
+  const ownPos = own ? [own.x, own.y] : [grant!.px, C.ROW_Y[0]!];
   const strangers = priests
     .filter((p) => !p.label && p.row.priestId !== ownId)
     .sort((a, b) => Math.abs(a.row.x - ownPos[0]!) + Math.abs(a.row.y - ownPos[1]!) - (Math.abs(b.row.x - ownPos[0]!) + Math.abs(b.row.y - ownPos[1]!)))
-    .slice(0, STRANGER_BUBBLES)
+    .slice(0, STRANGER_PRAYERS)
     .map((p) => p.row.priestId);
 
-  // Name tags first (yours, then mutuals), nudged upward until they stop colliding.
+  // Names first (yours, then mutuals), nudged upward until they stop colliding.
   const placed: Rect[] = [];
   const anchors = new Map<bigint, [number, number]>();
   const tagged = priests.filter((p) => p.label || p.row.priestId === ownId).sort((a, b) => Number(b.row.priestId === ownId) - Number(a.row.priestId === ownId));
   const tagPx = Math.round(textPx * 0.9);
   for (const p of tagged) {
     const [dx, dy0] = toDisplay(p.feet[0], p.feet[1] - HEAD);
-    const text = p.label ?? 'You';
+    const mine = p.row.priestId === ownId;
+    const text = p.label ?? 'you';
     let dy = dy0 - textPx * 0.2;
     let r = measureTag(dctx, dx, dy, text, tagPx);
     for (let k = 0; k < 4 && placed.some((q) => overlaps(q, r)); k++) {
@@ -343,32 +352,29 @@ function frame() {
     }
     placed.push(r);
     anchors.set(p.row.priestId, [dx, r.y]);
-    nameTag(dctx, dx, dy, text, tagPx, p.row.priestId === ownId ? '#ffe9a8' : '#f3dfa8');
+    nameTag(dctx, dx, dy, text, tagPx, mine, t);
   }
 
-  // Speech bubbles in priority order: yours, mutuals, then a few nearby strangers.
-  const order = [...priests].sort((a, b) => rank(a) - rank(b));
-  function rank(p: PriestView) {
-    return p.row.priestId === ownId ? 0 : p.label ? 1 : 2;
-  }
-  for (const p of order) {
+  // Prayers, written over the scene: yours, mutuals', then a couple of nearby strangers'.
+  const rank = (p: PriestView) => (p.row.priestId === ownId ? 0 : p.label ? 1 : 2);
+  for (const p of [...priests].sort((a, b) => rank(a) - rank(b))) {
     const mine = p.row.priestId === ownId;
-    // Prayers show while kneeling, and while walking in to the pew; not while departing.
-    if (muted.has(p.row.priestId) || p.row.state.tag === 'Departing' || p.pose.action === 'gone') continue;
+    if (muted.has(p.row.priestId) || p.row.state.tag === 'Departing') continue;
     if (!(mine || p.label || strangers.includes(p.row.priestId))) continue;
     const tick = conn.db.prayerTick.priestId.find(p.row.priestId);
     if (!tick) continue;
     const elapsed = t - ms(tick.at);
     if (elapsed < 0 || elapsed > SLOT) continue;
     const prayer = currentPrayer(p.row, tick)!;
-    const shown = prayer.text.slice(0, Math.ceil(prayer.text.length * Math.min(1, elapsed / (SLOT * 0.85))));
+    const shown = prayer.text.slice(0, Math.ceil(prayer.text.length * Math.min(1, elapsed / (SLOT * 0.8))));
     const [ax, ay] = anchors.get(p.row.priestId) ?? toDisplay(p.feet[0], p.feet[1] - HEAD);
-    const layout = layoutBubble(dctx, ax, ay - textPx * 0.2, shown, textPx, mine ? 3 : 2, mine);
+    const layout = layoutPrayer(dctx, ax, ay - textPx * 0.4, shown, mine ? textPx : Math.round(textPx * 0.92), mine ? 4 : 2, mine);
     if (!layout) continue;
     for (let k = 0; k < 3 && placed.some((q) => overlaps(q, layout.rect)); k++) layout.rect.y -= layout.rect.h * 0.6;
     if (placed.some((q) => overlaps(q, layout.rect)) && !mine) continue;
     placed.push(layout.rect);
-    drawBubble(dctx, layout);
+    const fade = Math.max(0, Math.min(1, elapsed / 500, (SLOT - elapsed) / 1500));
+    drawPrayer(dctx, layout, t, fade);
   }
 
   if (hovered && mouse) {
@@ -376,45 +382,36 @@ function frame() {
       const p = priests.find((x) => x.row.priestId === hovered!.id)!;
       const mine = p.row.priestId === ownId;
       const v = vestmentName(p.row.vestment.tag);
-      const title = mine ? `${p.label ?? 'You'} (you)` : (p.label ?? `A ${v}`);
+      const title = mine ? `${p.label ?? 'you'} (you)` : (p.label ?? `a ${v}`);
       const tick = conn.db.prayerTick.priestId.find(p.row.priestId);
       const prayer = muted.has(p.row.priestId) ? undefined : currentPrayer(p.row, tick);
       const body = p.row.state.tag === 'Departing' ? 'Going to light a candle.' : (prayer?.text ?? 'Kneeling in silence.');
-      const footer = mine ? '' : muted.has(p.row.priestId) ? 'Muted. Click to unmute.' : 'Click to mute.';
-      card(dctx, mouse.x, mouse.y, title, body, footer, textPx);
+      const footer = mine ? '' : muted.has(p.row.priestId) ? 'muted · click to unmute' : 'click to mute';
+      hoverText(dctx, mouse.x, mouse.y, title, body, footer, textPx, mine, t);
     } else if (hovered.kind === 'thurifer') {
-      card(dctx, mouse.x, mouse.y, 'The thurifer', THURIFER_PRAYER, 'Passes every two minutes.', textPx);
+      hoverText(dctx, mouse.x, mouse.y, 'the thurifer', THURIFER_PRAYER, 'passes every two minutes', textPx, false, t);
     } else {
       const c = candles.find((x) => x.row.candleId === hovered!.id)!;
       const lit = c.litAt <= t;
       const hours = Math.max(0, Math.round((c.expiresAt - t) / 3_600_000));
-      card(dctx, mouse.x, mouse.y, c.row.label, lit ? `A ${c.size}, burning for about ${hours} more hour${hours === 1 ? '' : 's'}.` : 'Being lit…', '', textPx);
+      hoverText(dctx, mouse.x, mouse.y, c.row.label, lit ? `A ${c.size}, burning for about ${hours} more hour${hours === 1 ? '' : 's'}.` : 'Being lit…', '', textPx, false, t);
     }
   }
 
   // --- status and closing ---------------------------------------------------------------
   if (phase === 'reconnecting' && disconnectedAt !== undefined) {
     if (Date.now() - disconnectedAt > RETRY_FOR_MS) closeWith('Ite, missa est', 'The connection to the cathedral was lost.');
-    nameTag(dctx, display.width / 2, display.height - textPx, 'Reconnecting…', textPx, '#a89780');
+    nameTag(dctx, display.width / 2, display.height - textPx, 'reconnecting…', textPx, false, t);
   }
   if (phase === 'closing' || phase === 'closed') {
     const a = Math.min(1, (Date.now() - closingSince) / 2000);
-    closingCard(dctx, a, closingTitle, closingSubtitle);
+    closingCard(dctx, a, closingTitle, closingSubtitle, Date.now());
     if (a >= 1 && phase === 'closing') {
       phase = 'closed';
       conn.disconnect();
       clearGrant();
     }
   }
-}
-
-function vignette(ctx: CanvasRenderingContext2D, vp: Viewport) {
-  const r = Math.max(vp.baseW, vp.baseH);
-  const g = ctx.createRadialGradient(vp.baseW / 2, vp.baseH / 2, r * 0.3, vp.baseW / 2, vp.baseH / 2, r * 0.68);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, 'rgba(0,0,0,0.35)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, vp.baseW, vp.baseH);
 }
 
 const SMOKE_EVERY_MS = 140;
