@@ -6,12 +6,13 @@ import { DbConnection } from './module_bindings';
 import type { Priest, PrayerTick, Candle } from './module_bindings/types';
 import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Drawable, type Viewport, type Camera } from './view';
 import { poseAt, seatedAt, type PriestPlan, type Pose } from './motion';
-import { AMBIENT, drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, type CandleView, type Light } from './scene';
+import { AMBIENT, drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, applyRays, windowLightAt, type CandleView, type Glow, type Light } from './scene';
 import { ditherFrame } from './dither';
-import { PriestSprites, vestmentName, thuriferHand, thuribleBowl } from './sprites';
+import { PriestSprites, vestmentName, thuriferHand, thuribleBowl, type Side } from './sprites';
 import { thurifersBetween, thuriferX, swing, NPC_LANE_Y, THURIFER_PRAYER } from './npc';
-import { closingCard, cursorNote, drawLine, hoverText, loadFont, measureTag, nameTag, overlaps, placeLine, textSize, CRIMSON, type Rect, type TagStyle } from './text';
+import { titleOver, cursorNote, drawLine, hoverText, loadFont, measureTag, nameTag, overlaps, placeLine, textSize, CRIMSON, type Rect, type TagStyle } from './text';
 import { drawKey, type KeyEntry, type KeyRow } from './key';
+import { setUpNotices } from './notices';
 import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
 import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, type ViewerGrant } from './net';
@@ -33,15 +34,28 @@ const sctx = staticLayer.getContext('2d')!;
 let staticKey = '';
 // Coloured light from the vault, kept apart so the dither can tint by it.
 const rayLayer = document.createElement('canvas');
-const rctx = rayLayer.getContext('2d', { willReadFrequently: true })!;
+const rctx = rayLayer.getContext('2d')!;
+let rayKey = '';
+let glows: Glow[] = [];
 
 const ms = (t: { microsSinceUnixEpoch: bigint }) => Number(t.microsSinceUnixEpoch / 1000n);
 
 type Phase = 'loading' | 'live' | 'reconnecting' | 'closing' | 'closed' | 'no-ticket';
 let phase: Phase = 'loading';
+/** Gold words over the scene: the title as you arrive, the dismissal as you leave. */
+const TITLE = 'Indulgence';
+const MOTTO = 'Mea Culpa, Pater';
+const DISMISSAL = 'Ite, missa est';
+const INTRO_HOLD_MS = 5000;
+const INTRO_FADE_MS = 1500;
+/** The dismissal's line beneath, for a priest that left a candle burning or not. */
+const endLine = (candleId: bigint) => (candleId !== 0n ? 'Your votive is lit. Deo gratias.' : 'Deo gratias.');
+let introAt: number | undefined;
+/** Where your priest last was, so the camera stays put once it has gone. */
+let lastOwnX: number | undefined;
 let closingSince = 0;
-let closingTitle = 'Ite, missa est';
-let closingSubtitle = 'Your candle is lit.';
+let closingTitle = DISMISSAL;
+let closingSubtitle = endLine(1n);
 let disconnectedAt: number | undefined;
 
 let grant: ViewerGrant | undefined;
@@ -92,7 +106,7 @@ async function start() {
   sprites = await spritesLoading;
   if (!grant) {
     phase = 'no-ticket';
-    closingTitle = '/indulgence';
+    closingTitle = TITLE;
     closingSubtitle = ticket ? 'This link has already been used or has expired.' : 'Run /indulgence in Claude Code to enter the cathedral.';
     return;
   }
@@ -135,17 +149,17 @@ function connect(g: ViewerGrant) {
     .onDisconnect((_ctx, _err, nextAttempt) => {
       if (phase === 'closing' || phase === 'closed') return;
       disconnectedAt ??= Date.now();
-      if (nextAttempt === undefined) closeWith('Ite, missa est', 'The connection to the cathedral was lost.');
+      if (nextAttempt === undefined) closeWith(DISMISSAL, 'The connection to the cathedral was lost.');
       else phase = 'reconnecting';
     })
     .onConnectError(() => {
       disconnectedAt ??= Date.now();
-      if (phase === 'loading') closeWith('/indulgence', 'Could not reach the cathedral.');
+      if (phase === 'loading') closeWith(TITLE, 'Could not reach the cathedral.');
     })
     .build();
 
   conn.db.priest.onDelete((_ctx, p) => {
-    if (p.priestId === ownId) closeWith('Ite, missa est', 'Your candle is lit.');
+    if (p.priestId === ownId) closeWith(DISMISSAL, endLine(p.candleId));
   });
 
   // The field of view never changes: seated priests do not move.
@@ -153,7 +167,7 @@ function connect(g: ViewerGrant) {
     .subscriptionBuilder()
     .onApplied(() => {
       subscribed = true;
-      if (!conn!.db.priest.priestId.find(ownId)) closeWith('Ite, missa est', 'Your priest has already left.');
+      if (!conn!.db.priest.priestId.find(ownId)) closeWith(DISMISSAL, 'Your priest has already left.');
     })
     .subscribe([
       `SELECT * FROM priest WHERE x >= ${lo} AND x < ${hi}`,
@@ -224,21 +238,21 @@ function frame() {
   dctx.fillStyle = '#0a0909';
   dctx.fillRect(0, 0, display.width, display.height);
 
-  if (phase === 'no-ticket') {
-    closingCard(dctx, 1, closingTitle, closingSubtitle, Date.now());
-    return;
-  }
-  if (!conn || !subscribed) {
-    closingCard(dctx, 1, '/indulgence', 'Entering the cathedral…', Date.now());
+  // Before there is a cathedral to show, the words are written on the dark.
+  const ending = phase === 'closing' || phase === 'closed';
+  if (phase === 'no-ticket' || !conn || !subscribed) {
+    if (phase === 'no-ticket' || ending) titleOver(dctx, 1, closingTitle, closingSubtitle, Date.now());
+    else titleOver(dctx, 1, TITLE, MOTTO, Date.now());
     return;
   }
 
   const own = conn.db.priest.priestId.find(ownId);
-  if (own?.state.tag === 'Departing' && phase !== 'closing' && phase !== 'closed' && t - ms(own.stateSince) > C.PRIEST_REMOVE_AFTER_MS) {
-    closeWith('Ite, missa est', 'Your candle is lit.');
+  if (own) lastOwnX = own.x;
+  if (own?.state.tag === 'Departing' && !ending && t - ms(own.stateSince) > C.PRIEST_REMOVE_AFTER_MS) {
+    closeWith(DISMISSAL, endLine(own.candleId));
   }
   // Your bay's altar at the top centre of the screen; pews run on past the bottom.
-  const cam = cameraFor(bayCentreX(own ? own.x : grant!.px), vp);
+  const cam = cameraFor(bayCentreX(lastOwnX ?? grant!.px), vp);
   const { x0, x1, yMax } = visibleTiles(cam, vp);
   const entryY = Math.max(C.ENTRY_Y, yMax + 2);
 
@@ -314,13 +328,28 @@ function frame() {
     lights.push({ x: bx, y: by, r: 18, power: 0.3 });
   }
   applyLighting(bctx, baseW, baseH, lights, AMBIENT);
-  drawRays(rctx, cam, x0, x1, baseW, baseH, Math.floor(t / 2000) * 2000, yMax);
-  ditherFrame(bctx, baseW, baseH, rctx.getImageData(0, 0, baseW, baseH).data);
+  ditherFrame(bctx, baseW, baseH);
+  // The window light never moves: drawn once for each camera, like the floor.
+  if (key !== rayKey) {
+    glows = drawRays(rctx, cam, x0, x1, baseW, baseH);
+    rayKey = key;
+  }
+  applyRays(bctx, rayLayer);
+  // The windows light the side of each figure that faces them: faintly everywhere, and in
+  // the glass colour where it stands in a pool of light.
+  const windowSide = (x: number): Side => (Math.floor(x / C.BAY_W) <= cam.bay ? 'left' : 'right');
+  for (const p of priests) {
+    sprites!.litSide(bctx, vestmentName(p.row.vestment.tag), p.pose, p.feet[0], p.feet[1], windowSide(p.pose.x), windowLightAt(glows, p.pose.x, p.pose.y));
+  }
+  for (const th of thurifers) {
+    const pose: Pose = { x: th.x, y: th.y, dir: 'right', action: 'walk', t: t / 1000, alpha: 1 };
+    sprites!.litSide(bctx, 'thurifer', pose, th.feet[0], th.feet[1], windowSide(th.x), windowLightAt(glows, th.x, th.y));
+  }
   drawFixedFlames(bctx, cam, x0, x1, yMax, t);
   for (const [fx, fy, seed] of litFlames) drawFlame(bctx, fx, fy, t, seed);
   // Friends picked out in the key, ringed in crimson after the dither so it stays crimson.
   for (const p of priests) {
-    if (marked.has(p.row.priestId)) sprites!.mark(bctx, vestmentName(p.row.vestment.tag), p.pose, p.feet[0], p.feet[1], CRIMSON);
+    if (marked.has(p.row.priestId) && p.label) sprites!.mark(bctx, vestmentName(p.row.vestment.tag), p.pose, p.feet[0], p.feet[1], CRIMSON);
   }
 
   dctx.imageSmoothingEnabled = false;
@@ -357,29 +386,30 @@ function frame() {
     .map((p) => p.row.priestId);
 
   // Names: yours always; anyone else's only while hovered, or in crimson once picked out
-  // in the key. Nudged upward until they stop colliding.
+  // in the key. Written under the priest's feet, apart from its prayers over its head, and
+  // nudged downward until they stop colliding.
   const tagStyle = (p: PriestView): TagStyle | undefined =>
-    p.row.priestId === ownId ? 'own' : marked.has(p.row.priestId) ? 'marked' : p.row.priestId === hoveredPriest ? 'plain' : undefined;
+    p.row.priestId === ownId ? 'own' : marked.has(p.row.priestId) && p.label ? 'marked' : p.row.priestId === hoveredPriest ? 'plain' : undefined;
   const tagOrder = (p: PriestView) => (p.row.priestId === ownId ? 0 : p.row.priestId === hoveredPriest ? 1 : 2);
   const placed: Rect[] = [];
-  const anchors = new Map<bigint, [number, number]>();
   const tagPx = Math.round(textPx * 0.9);
   for (const p of priests.filter((x) => tagStyle(x)).sort((a, b) => tagOrder(a) - tagOrder(b))) {
-    const [dx, dy0] = toDisplay(p.feet[0], p.feet[1] - HEAD);
+    const [dx, feetY] = toDisplay(p.feet[0], p.feet[1] + 1);
     const style = tagStyle(p)!;
-    const text = style === 'own' ? 'you' : (p.label ?? `a ${vestmentName(p.row.vestment.tag)}`);
-    let dy = dy0 - textPx * 0.2;
+    // Named for its vestment: "Your friar", "Hildegard's bishop", "a cardinal".
+    const kind = vestmentName(p.row.vestment.tag);
+    const text = style === 'own' ? `Your ${kind}` : p.label ? `${p.label}'s ${kind}` : `a ${kind}`;
+    let dy = feetY + tagPx; // nameTag takes the bottom of the text
     let r = measureTag(dctx, dx, dy, text, tagPx);
     for (let k = 0; k < 4 && placed.some((q) => overlaps(q, r)); k++) {
-      dy -= tagPx * 1.1;
+      dy += tagPx * 1.1;
       r = measureTag(dctx, dx, dy, text, tagPx);
     }
     placed.push(r);
-    anchors.set(p.row.priestId, [dx, r.y]);
     nameTag(dctx, dx, dy, text, tagPx, style, t);
   }
 
-  // Prayers, a sentence at a time, once a priest has sat down: yours, your friends', a
+  // Prayers, a clause at a time, once a priest has sat down: yours, your friends', a
   // couple of nearby strangers' and whoever is under the mouse.
   const present = new Set(priests.map((p) => p.row.priestId));
   for (const id of recitals.keys()) if (!present.has(id)) recitals.delete(id);
@@ -402,7 +432,7 @@ function frame() {
     if (!spoken.current) continue;
 
     const px = mine ? textPx : Math.round(textPx * 0.94);
-    const [ax, ay] = anchors.get(id) ?? toDisplay(p.feet[0], p.feet[1] - HEAD);
+    const [ax, ay] = toDisplay(p.feet[0], p.feet[1] - HEAD);
     const cur = placeLine(dctx, spoken.current.line.text, ax, ay - textPx * 0.25, px, mine);
     const prev = spoken.previous ? placeLine(dctx, spoken.previous.text, ax, cur.y, px, mine) : undefined;
     const block = (): Rect => (prev ? { x: Math.min(cur.x, prev.x), y: prev.y, w: Math.max(cur.x + cur.w, prev.x + prev.w) - Math.min(cur.x, prev.x), h: cur.y + cur.h - prev.y } : cur);
@@ -413,7 +443,8 @@ function frame() {
     if (placed.some((q) => overlaps(q, block())) && !mine) continue;
     placed.push(block());
 
-    drawLine(dctx, cur, spoken.current.shown, mine, t, spoken.current.alpha);
+    const voice: TagStyle = mine ? 'own' : marked.has(id) && p.label ? 'marked' : 'plain';
+    drawLine(dctx, cur, spoken.current.shown, voice, t, spoken.current.alpha);
     if (prev && spoken.previous) {
       // The finished line rises above the new one at half opacity, sways a couple of
       // pixels as it drifts off, and is gone after LINGER_MS.
@@ -422,7 +453,7 @@ function frame() {
       const sway = Math.sin((age / 1000) * Math.PI * 1.3) * scale * 1.5;
       const drift = (-age / LINGER_MS) * scale * 2;
       const out = Math.max(0, Math.min(1, (LINGER_MS - age) / 350));
-      drawLine(dctx, prev, spoken.previous.text, mine, t, spoken.previous.alpha * out, sway, (cur.y - prev.y) * (1 - rise) + drift);
+      drawLine(dctx, prev, spoken.previous.text, voice, t, spoken.previous.alpha * out, sway, (cur.y - prev.y) * (1 - rise) + drift);
     }
   }
 
@@ -452,21 +483,33 @@ function frame() {
     .filter((p) => p.label && p.row.priestId !== ownId)
     .map((p) => ({ id: p.row.priestId, name: p.label!, leaving: p.row.state.tag === 'Departing', marked: marked.has(p.row.priestId) }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const drawnKey = drawKey(dctx, keyEntries, Math.round(textPx * 0.85), keyHover);
-  keyPanel = drawnKey.panel;
-  keyRows = drawnKey.rows;
+  // (Once you have left, you are no longer among them: no key.)
+  if (ending) {
+    keyPanel = undefined;
+    keyRows = [];
+  } else {
+    const drawnKey = drawKey(dctx, keyEntries, Math.round(textPx * 0.85), keyHover);
+    keyPanel = drawnKey.panel;
+    keyRows = drawnKey.rows;
+  }
 
   // --- status and closing ---------------------------------------------------------------
   if (phase === 'reconnecting' && disconnectedAt !== undefined) {
-    if (Date.now() - disconnectedAt > RETRY_FOR_MS) closeWith('Ite, missa est', 'The connection to the cathedral was lost.');
+    if (Date.now() - disconnectedAt > RETRY_FOR_MS) closeWith(DISMISSAL, 'The connection to the cathedral was lost.');
     nameTag(dctx, display.width / 2, display.height - textPx, 'reconnecting…', textPx, 'plain', t);
   }
-  if (phase === 'closing' || phase === 'closed') {
+  // The title over the cathedral as you arrive: five seconds, then it fades.
+  introAt ??= Date.now();
+  const sinceIntro = Date.now() - introAt;
+  if (!ending && sinceIntro < INTRO_HOLD_MS + INTRO_FADE_MS) {
+    titleOver(dctx, Math.min(1, 1 - (sinceIntro - INTRO_HOLD_MS) / INTRO_FADE_MS), TITLE, MOTTO, Date.now());
+  }
+  // And the dismissal as you leave, over the cathedral, which carries on behind it.
+  if (ending) {
     const a = Math.min(1, (Date.now() - closingSince) / 2000);
-    closingCard(dctx, a, closingTitle, closingSubtitle, Date.now());
+    titleOver(dctx, a, closingTitle, closingSubtitle, Date.now());
     if (a >= 1 && phase === 'closing') {
       phase = 'closed';
-      conn.disconnect();
       clearGrant();
     }
   }
@@ -525,5 +568,6 @@ display.addEventListener('click', () => {
   else muted.add(hovered.id);
 });
 
+setUpNotices();
 void start();
 requestAnimationFrame(frame);

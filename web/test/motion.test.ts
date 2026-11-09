@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { C, seatPos } from '../../shared/constants';
-import { poseAt, along, pathLength, enterPath, departPaths, approachPoint, seatedAt, type PriestPlan } from '../src/motion';
-import { cameraFor, project, viewportFor } from '../src/view';
+import { poseAt, along, pathLength, enterPath, departPaths, approachPoint, seatedAt, slotPoint, type PriestPlan } from '../src/motion';
+import { cameraFor, project, standFacesLeft, viewportFor } from '../src/view';
 
 const seat = { bay: 0, row: 1, half: 0, seat: 3 };
 const [sx, sy] = seatPos(0, 1, 0, 3);
@@ -19,6 +19,26 @@ describe('projection', () => {
     expect(ax).toBe(Math.round(vp.baseW / 2));
     // The altar sits just below the top of the screen.
     expect(project(cam, 17, C.ALTAR_Y[0]!)[1]).toBeLessThan(60);
+  });
+});
+
+describe('votive stands', () => {
+  it('face in toward your column of pews from both sides', () => {
+    const cam = cameraFor(C.BAY_W * 2 + C.AISLE_CENTRE_X, viewportFor(1440, 900));
+    expect(cam.bay).toBe(2);
+    // Your left arcade and those beyond it face right; your right arcade and beyond face left.
+    expect([1, 2, 3, 4].map((a) => standFacesLeft(cam, a))).toEqual([false, false, true, true]);
+  });
+
+  it('step their tiers back away from the front, mirrored when facing left', () => {
+    const front = slotPoint(3, 2);
+    const back = slotPoint(3, 32);
+    expect(back.x).toBeLessThan(front.x);
+    expect(back.lift).toBeGreaterThan(front.lift);
+    const centre = 3 * C.BAY_W + C.STAND_CENTRE_X;
+    expect(slotPoint(3, 2, true).x - centre).toBeCloseTo(centre - front.x);
+    expect(slotPoint(3, 32, true).x).toBeGreaterThan(slotPoint(3, 2, true).x);
+    expect(slotPoint(3, 32, true).y).toBe(back.y);
   });
 });
 

@@ -4,25 +4,26 @@ import { sentences, schedule, spokenAt, typedAt, LINGER_MS, CHARS_PER_S } from '
 const SLOT = 20_000;
 
 describe('sentences', () => {
-  it('breaks only after full stops, whatever the model did with whitespace', () => {
+  it('breaks after every comma and full stop, whatever the model did with whitespace', () => {
     const text = 'Pater noster, qui es\nin caelis,\n\n   sanctificetur nomen tuum. Adveniat regnum tuum.\nFiat voluntas tua';
-    expect(sentences(text)).toEqual(['Pater noster, qui es in caelis, sanctificetur nomen tuum.', 'Adveniat regnum tuum.', 'Fiat voluntas tua']);
+    expect(sentences(text)).toEqual(['Pater noster,', 'qui es in caelis,', 'sanctificetur nomen tuum.', 'Adveniat regnum tuum.', 'Fiat voluntas tua']);
   });
 
   it('keeps ellipses and drops empty fragments', () => {
     expect(sentences('Amen... . Amen.')).toEqual(['Amen...', 'Amen.']);
+    expect(sentences('Kyrie,, eleison ,')).toEqual(['Kyrie,,', 'eleison ,']);
     expect(sentences('  ')).toEqual([]);
   });
 
-  it('a prayer without a full stop stays on one line', () => {
-    expect(sentences('Kyrie eleison, Christe eleison, Kyrie eleison')).toHaveLength(1);
+  it('a prayer without a comma or full stop stays on one line', () => {
+    expect(sentences('Kyrie eleison Christe eleison Kyrie eleison')).toHaveLength(1);
   });
 });
 
 describe('schedule', () => {
   it('types at a steady pace, one line after another, inside the slot', () => {
     const r = schedule('Ave Maria, gratia plena. Dominus tecum. Amen.', 1000, SLOT);
-    expect(r.lines.map((l) => l.text)).toEqual(['Ave Maria, gratia plena.', 'Dominus tecum.', 'Amen.']);
+    expect(r.lines.map((l) => l.text)).toEqual(['Ave Maria,', 'gratia plena.', 'Dominus tecum.', 'Amen.']);
     expect(r.lines[0]!.start).toBe(1000);
     const l0 = r.lines[0]!;
     expect(l0.typed - l0.start).toBeCloseTo((l0.text.length / CHARS_PER_S) * 1000);
@@ -36,6 +37,13 @@ describe('schedule', () => {
     expect(r.lines.at(-1)!.typed).toBeLessThan(SLOT * 0.85);
   });
 
+  it('pauses for longer after a full stop than after a comma', () => {
+    const r = schedule('Ave Maria, gratia plena. Dominus tecum.', 0, SLOT);
+    const [a, b, c] = r.lines;
+    const gapAfter = (l: typeof a, next: typeof a) => next!.start - l!.typed;
+    expect(gapAfter(b, c)).toBeGreaterThan(gapAfter(a, b));
+  });
+
   it('types a line from the left', () => {
     const r = schedule('Gloria Patri.', 0, SLOT);
     const l = r.lines[0]!;
@@ -46,7 +54,7 @@ describe('schedule', () => {
 });
 
 describe('spokenAt', () => {
-  const r = schedule('Ave Maria, gratia plena, Dominus tecum. Benedicta tu. Sancta Maria. Amen.', 0, SLOT);
+  const r = schedule('Ave Maria gratia plena Dominus tecum. Benedicta tu. Sancta Maria. Amen.', 0, SLOT);
   const [a, b, c] = r.lines;
 
   it('says nothing before it begins (the priest is still walking to its pew)', () => {

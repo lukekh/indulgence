@@ -1,26 +1,29 @@
 // How a prayer is recited over a priest's head.
 //
-// A priest says nothing until it has sat down in its pew. Then the prayer is typed out one
-// sentence per line: whatever line breaks the model wrote are ignored, and only a full stop
-// ends a line. When the next line begins, the one before rises above it at half opacity,
-// sways a little and is gone after LINGER_MS, or at once if a third line starts first. The
-// last line of one prayer gives way to the first of the next in the same way.
+// A priest says nothing until it has sat down in its pew. Then the prayer is typed out a
+// clause at a time: whatever line breaks the model wrote are ignored, and every comma or
+// full stop ends a line, so no line runs too long. When the next line begins, the one before
+// rises above it at half opacity, sways a little and is gone after LINGER_MS, or at once if
+// a third line starts first. The last line of one prayer gives way to the first of the next
+// in the same way.
 
 /** How long a finished line lingers above the one being typed. */
 export const LINGER_MS = 2000;
 /** Typing pace in characters per second; faster only when a prayer would not fit its slot. */
 export const CHARS_PER_S = 14;
-/** A breath after each full stop, in characters' worth of time. */
+/** A breath after each full stop, and a shorter one after a comma, in characters' worth of time. */
 const PAUSE_CHARS = 10;
+const COMMA_PAUSE_CHARS = 5;
+const pause = (line: string) => (line.endsWith(',') ? COMMA_PAUSE_CHARS : PAUSE_CHARS);
 /** Share of the pacing slot a prayer may take to type; the rest it is read in full. */
 const TYPE_SHARE = 0.8;
 /** The last line fades out over the end of its slot. */
 const FADE_OUT_MS = 1500;
 
-/** The prayer as lines: all whitespace collapsed, broken only after full stops. */
+/** The prayer as lines: all whitespace collapsed, broken only after commas and full stops. */
 export function sentences(text: string): string[] {
   const flat = text.replace(/\s+/g, ' ').trim();
-  return (flat.match(/[^.]*\.+|[^.]+$/g) ?? []).map((s) => s.trim()).filter((s) => /[^.\s]/.test(s));
+  return (flat.match(/[^.,]*[.,]+|[^.,]+$/g) ?? []).map((s) => s.trim()).filter((s) => /[^.,\s]/.test(s));
 }
 
 export interface Line {
@@ -41,12 +44,12 @@ export interface Recital {
 /** Schedule a prayer that begins at `start` and owns a pacing slot of `slotMs`. */
 export function schedule(text: string, start: number, slotMs: number): Recital {
   const parts = sentences(text);
-  const weight = parts.reduce((n, s) => n + s.length + PAUSE_CHARS, 0);
+  const weight = parts.reduce((n, s) => n + s.length + pause(s), 0);
   const cps = Math.max(CHARS_PER_S, weight / ((slotMs * TYPE_SHARE) / 1000));
   let at = start;
   const lines = parts.map((s) => {
     const line: Line = { text: s, start: at, typed: at + (s.length / cps) * 1000 };
-    at += ((s.length + PAUSE_CHARS) / cps) * 1000;
+    at += ((s.length + pause(s)) / cps) * 1000;
     return line;
   });
   return { lines, start, end: start + slotMs };

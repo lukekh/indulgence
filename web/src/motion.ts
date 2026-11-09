@@ -51,13 +51,17 @@ export function sideAisleX(bay: number, half: number): number {
   return C.BAY_W * bay + (half === 0 ? C.SIDE_AISLE_X[0]! : C.SIDE_AISLE_X[1]!);
 }
 
-/** Fine position of a candle slot on its stand: 4 tiers stepping back, 10 along y. */
-export function slotPoint(arcade: number, slot: number): { x: number; y: number; lift: number } {
+/**
+ * Fine position of a candle slot on its stand: 4 tiers stepping back from the front, 10
+ * along y. A stand facing right has its front (lowest) tier on the right; facing left, on
+ * the left.
+ */
+export function slotPoint(arcade: number, slot: number, facesLeft = false): { x: number; y: number; lift: number } {
   const tier = Math.floor(slot / C.STAND_SLOTS_PER_TIER);
   const k = slot % C.STAND_SLOTS_PER_TIER;
   const span = C.STAND_Y[1]! - C.STAND_Y[0]! + 1;
   return {
-    x: C.BAY_W * arcade + C.STAND_X[1]! - tier * 0.7,
+    x: C.BAY_W * arcade + (facesLeft ? C.STAND_X[0]! + tier * 0.7 : C.STAND_X[1]! - tier * 0.7),
     y: C.STAND_Y[0]! + 0.25 + (k * (span - 0.5)) / C.STAND_SLOTS_PER_TIER,
     lift: tier * 3,
   };

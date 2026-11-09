@@ -25,4 +25,4 @@ Otherwise:
    ```
 
    Do not add to, summarise or rephrase anything. When the subagent replies `done: false`, launch a fresh `priest` subagent with the same two lines. Stop when it replies `done: true`.
-7. When finished, reply "Your candle is lit." and nothing else.
+7. When finished, reply "Your votive is lit. Deo gratias." and nothing else.

@@ -28,11 +28,11 @@ const HEADLESS = MODE === 'gif' || process.env.DEMO_HEADLESS === '1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const OUT = path.resolve(process.env.DEMO_OUT ?? path.join(HERE, 'out', 'indulgence-demo.gif'));
-const FPS = Number(process.env.DEMO_FPS ?? 8);
+const FPS = Number(process.env.DEMO_FPS ?? 7);
 /** Playback speed of the slow walks (in to the pew, out past the stand) in the GIF. */
-const FAST = Number(process.env.DEMO_DEPART_SPEED ?? 3);
+const FAST = Number(process.env.DEMO_DEPART_SPEED ?? 4);
 /** Real time spent watching your priest pray once it has sat down. */
-const SEATED_MS = Number(process.env.DEMO_SEATED_MS ?? 21_000);
+const SEATED_MS = Number(process.env.DEMO_SEATED_MS ?? 17_000);
 // 1440 × 900 renders the cathedral at 2× (its base canvas is about 640 × 360); 1920 × 1080 gives 3×.
 const WIDTH = Number(process.env.DEMO_WIDTH ?? 1440);
 const HEIGHT = Number(process.env.DEMO_HEIGHT ?? 900);
@@ -285,7 +285,23 @@ async function main() {
       await hover(layout.candles.Bede && aim.candle(layout.candles.Bede), 2700);
       await hover(layout.candles.Clare && aim.candle(layout.candles.Clare), 2700);
       await hover(aim.thurifer(), 3200);
-      await hover({ x: box.x + 40, y: box.y + 40 }, 1500);
+      await hover({ x: box.x + 40, y: box.y + 40 }, 600);
+
+      // The notices in the bottom left: Latin first, then English.
+      say('scene: Repudiationes and Merita');
+      const viewer = page.frameLocator('#frame');
+      const notice = async (selector: string, ms: number) => {
+        await viewer.locator(selector).hover();
+        await sleep(450);
+        await viewer.locator(selector).click();
+        await sleep(ms);
+      };
+      await notice('button[data-open="repudiationes"]', 2000);
+      await notice('button[data-lang="en"]', 1700);
+      await viewer.locator('[data-close]').click();
+      await notice('button[data-open="merita"]', 2000);
+      await viewer.locator('[data-close]').click();
+      await hover({ x: box.x + 40, y: box.y + 40 }, 300);
     }
 
     // Walking in at a solemn 1 tile/s takes most of a minute, and a priest prays only once
@@ -300,8 +316,9 @@ async function main() {
     const fastFrom = Date.now();
     departed = true;
     await cathedral.depart();
-    await sleep(C.PRIEST_REMOVE_AFTER_MS + 3500);
-    fast.push([fastFrom, Date.now() - 2500]);
+    // "Ite, missa est" is written over the cathedral as your priest leaves: in real time.
+    await sleep(C.PRIEST_REMOVE_AFTER_MS + 5500);
+    fast.push([fastFrom, Date.now() - 5000]);
     await page.evaluate(() => (window as any).stage.closeBrowser());
     await sleep(800);
     await page.evaluate(() => (window as any).stage.finish());

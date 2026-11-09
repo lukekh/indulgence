@@ -25,6 +25,12 @@ const WALK_FPS = 5;
 const LIGHT_CYCLE = [0, 1, 4, 4, 4, 4, 5];
 
 export const VESTMENTS: VestmentName[] = ['friar', 'priest', 'bishop', 'cardinal'];
+
+export type Side = 'left' | 'right';
+/** Window light on figures: a faint pale edge everywhere, stronger in the glass colour in a pool. */
+const RIM_COLOUR = '#e6e1d6';
+const RIM_ALPHA = 0.42;
+const RIM_POOL_ALPHA = 0.7;
 type SheetName = VestmentName | 'thurifer';
 
 export function vestmentName(tag: string): VestmentName {
@@ -39,6 +45,9 @@ export class PriestSprites {
   /** Silhouettes in the marking colour, made when first needed. */
   private marks = new Map<string, HTMLCanvasElement>();
   private scratch?: HTMLCanvasElement;
+  /** Edges facing one side (left or right) of every frame, for window light. */
+  private rims = new Map<string, HTMLCanvasElement>();
+  private rimScratch?: HTMLCanvasElement;
 
   static async load(base = '/sprites'): Promise<PriestSprites> {
     const s = new PriestSprites();
@@ -94,6 +103,77 @@ export class PriestSprites {
       drawFromSheet(ctx, sheet, pose, fx, fy);
     } else drawPlaceholder(ctx, v, pose, fx, fy);
     ctx.restore();
+  }
+
+  /**
+   * Window light on the side of a figure that faces the window, for a faux-3D look: a faint
+   * pale edge everywhere (the high windows light the whole nave a little), and a brighter
+   * edge in the glass colour where the figure stands in a pool of window light. Drawn after
+   * the dither, so it stays crisp.
+   */
+  litSide(ctx: CanvasRenderingContext2D, name: VestmentName | 'thurifer', pose: Pose, fx: number, fy: number, side: Side, pool?: { colour: [number, number, number]; strength: number }) {
+    this.rim(ctx, name, pose, fx, fy, side, RIM_COLOUR, RIM_ALPHA);
+    if (pool && pool.strength > 0) this.rim(ctx, name, pose, fx, fy, side, `rgb(${pool.colour.join(',')})`, RIM_POOL_ALPHA * pool.strength);
+  }
+
+  /** The figure's edges facing `side` (two pixels deep, the outer one brighter) in `colour`. */
+  rim(ctx: CanvasRenderingContext2D, name: VestmentName | 'thurifer', pose: Pose, fx: number, fy: number, side: Side, colour: string, alpha: number) {
+    if (pose.action === 'gone' || pose.alpha <= 0 || alpha <= 0) return;
+    const sheetName: SheetName = name === 'thurifer' && !this.sheets.has('thurifer') ? 'priest' : name;
+    const mask = this.rimMask(sheetName, side);
+    if (!mask) return;
+    const f = FRAME * SPRITE_SCALE;
+    const s = (this.rimScratch ??= document.createElement('canvas'));
+    s.width = f;
+    s.height = f;
+    const sc = s.getContext('2d')!;
+    drawFromSheet(sc, mask, pose, f / 2, f - 2); // the frame lands at (0, 0)
+    sc.globalCompositeOperation = 'source-in';
+    sc.fillStyle = colour;
+    sc.fillRect(0, 0, f, f);
+    ctx.save();
+    ctx.globalAlpha = alpha * pose.alpha;
+    ctx.drawImage(s, Math.round(fx - f / 2), Math.round(fy - f + 2));
+    ctx.restore();
+  }
+
+  private rimMask(name: SheetName, side: Side): HTMLCanvasElement | undefined {
+    const key = `${name}:${side}`;
+    const cached = this.rims.get(key);
+    if (cached) return cached;
+    const sheet = this.sheets.get(name);
+    if (!sheet) return undefined;
+    const { width: w, height: h } = sheet;
+    const src = sheet.getContext('2d')!.getImageData(0, 0, w, h).data;
+    const m = document.createElement('canvas');
+    m.width = w;
+    m.height = h;
+    const mctx = m.getContext('2d')!;
+    const out = mctx.createImageData(w, h);
+    const f = FRAME * SPRITE_SCALE;
+    for (let y = 0; y < h; y++) {
+      for (let cell = 0; cell < w; cell += f) {
+        // Walk each row of each frame from the lit side: the first two pixels of every run
+        // of figure after a gap are edges facing the light.
+        let run = 0;
+        for (let i = 0; i < f; i++) {
+          const x = side === 'left' ? cell + i : cell + f - 1 - i;
+          const o = (y * w + x) * 4;
+          if (src[o + 3] === 0) {
+            run = 0;
+            continue;
+          }
+          run++;
+          if (run <= 2) {
+            out.data[o] = out.data[o + 1] = out.data[o + 2] = 255;
+            out.data[o + 3] = run === 1 ? 255 : 100;
+          }
+        }
+      }
+    }
+    mctx.putImageData(out, 0, 0);
+    this.rims.set(key, m);
+    return m;
   }
 
   /**

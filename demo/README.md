@@ -11,7 +11,7 @@ A scripted, end-to-end run of /indulgence. Every run starts from nothing and cle
    - 18 strangers saying canned prayers.
    - the thurifer. The recording waits, up to two minutes, so that it processes past just after the cathedral opens.
 4. Drives your session through the gate's real MCP tool handler (`begin`, `pray`, `depart`), so the terminal shows the real tool results. The Claude Code pane is a re-enactment: a real session would need a GitHub OAuth App and a deployed gate.
-5. In the viewer, the mouse hovers over Hildegard to show her name, picks Anselm out in the key (crimson outline and name), then visits the two votives and the thurifer. Your priest walks up the side aisle, turns into its pew in profile, kneels and recites a sentence per line, then leaves to light its candle.
+5. In the viewer, *Indulgence* is written over the cathedral as it opens. The mouse hovers over Hildegard to show her name, picks Anselm out in the key (crimson outline, name and prayers), visits the two votives and the thurifer, then opens *Repudiationes* (in Latin, then English) and *Merita*. Your priest walks up the side aisle, turns into its pew in profile, kneels and recites a clause per line, then leaves to light its candle, and *Ite, missa est* is written over the cathedral.
 
 ```sh
 cd demo && npm install
@@ -26,17 +26,17 @@ Needs the SpacetimeDB CLI, Rust (the module is compiled for each run), Google Ch
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `DEMO_WIDTH`, `DEMO_HEIGHT` | 1440, 900 | Stage size. 1440 × 900 draws the cathedral at 2×, 1920 × 1080 at 3× (a bigger GIF) |
-| `DEMO_FPS` | 8 | Capture rate (priests move slowly) |
-| `DEMO_DEPART_SPEED` | 3 | Playback speed of the slow walks (the rest of the walk in, and the departure) in the GIF |
-| `DEMO_SEATED_MS` | 21000 | Real time spent watching your priest recite once it has sat down |
-| `DEMO_LOGIN` | `you` | Your name tag |
+| `DEMO_FPS` | 7 | Capture rate (priests move slowly) |
+| `DEMO_DEPART_SPEED` | 4 | Playback speed of the slow walks (the rest of the walk in, and the departure) in the GIF |
+| `DEMO_SEATED_MS` | 17000 | Real time spent watching your priest recite once it has sat down |
+| `DEMO_LOGIN` | `you` | Your GitHub login in the demo (the name your friends see) |
 | `DEMO_INTENTION` | `for the soul of my cat` | The intention typed into `/indulgence` |
 | `DEMO_STRANGERS` | 18 | Size of the congregation |
 | `DEMO_OUT` | `out/indulgence-demo.gif` | Output path |
 | `DEMO_HEADLESS` | | `1` runs `live` headless (for CI) |
 | `DEMO_KEEP_TMP` | | `1` keeps the run folder in `.cache/`: logs, raw frames, ffmpeg list |
 
-Two stretches play at 3× speed in the GIF: the rest of your walk to the pew after the hover tour, and the departure from leaving the pew to the closing card. Everything else is real time, including the start of the slow walk in and your priest's recital once it sits down. A run takes about 5 minutes, most of it waiting for the votive-lighters to walk out and for the thurifer to come round.
+Two stretches play at 4× speed in the GIF: the rest of your walk to the pew after the hover tour, and the departure from leaving the pew to the closing card. Everything else is real time, including the start of the slow walk in and your priest's recital once it sits down. A run takes about 5 minutes, most of it waiting for the votive-lighters to walk out and for the thurifer to come round.
 
 ## Asset sheets
 
@@ -47,8 +47,9 @@ Two stretches play at 3× speed in the GIF: the rest of your walk to the pew aft
 | `cathedral.jpg`, `cathedral-raw.jpg` | The whole empty view, as on a 1440 × 900 screen |
 | `altar.jpg` | Altar, cross and candlesticks before the reredos |
 | `pews.jpg` | Three rows of pews between the side aisles |
-| `window-light.jpg` | A pool of stained-glass window light down the nave, in game and on its own at 5× strength |
-| `votive-stand.jpg` | A stand with tapers, votives, pillars and paschal candles, lit |
+| `window-light.jpg` | The stained-glass window light around your bay, in game and on its own at 5× strength |
+| `votive-stand.jpg` | The stands either side of your pews, both facing in, with tapers, votives, pillars and paschal candles, lit |
+| `window-rim.jpg` | The window light on the side of each figure: in the pews with and without it, and close up without it, with the faint edge, and in a pool of light |
 | `priest-friar.jpg`, `priest-priest.jpg`, `priest-bishop.jpg`, `priest-cardinal.jpg` | Each vestment in every pose: up the aisle, kneeling, along the pew both ways (profile), walking out, lighting a candle |
 | `thurifer.jpg` | The thurifer at three points of the thurible's swing |
 | `priests.jpg` | Every vestment from behind and from the front, and the thurifer |

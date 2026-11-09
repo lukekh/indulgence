@@ -9,32 +9,115 @@
     <title>/indulgence</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='7' y='5' width='2' height='10' fill='%23efe4c8'/%3E%3Cpath d='M8 0c2 3 1 4 0 5-1-1-2-2 0-5z' fill='%23ffcf5a'/%3E%3C/svg%3E" />
     <style>
-      :root { color-scheme: dark; }
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0907; color: #a89780; font: 12px/1.5 Georgia, serif; }
+      @font-face {
+        font-family: 'Grenze Gotisch';
+        src: url('/fonts/GrenzeGotisch.ttf') format('truetype');
+        font-weight: 100 900;
+        font-display: swap;
+      }
+      :root {
+        color-scheme: dark;
+        --ink: #0a0909;
+        --text: #e9e5dc;
+        --dim: #8f8a80;
+        --gold: rgb(222, 180, 89);
+        --crimson: rgb(214, 44, 58);
+        --face: 'Grenze Gotisch', Georgia, 'Times New Roman', serif;
+      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--dim); font: 16px/1.5 var(--face); }
       /* The cathedral fills the whole window. */
       #view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
-      footer { position: fixed; left: 10px; bottom: 8px; max-width: min(820px, calc(100vw - 20px)); padding: 3px 9px; border-radius: 4px; background: rgba(12, 9, 7, 0.62); font-size: 11px; color: #8d7e69; }
-      footer details[open] { padding: 4px 0; }
-      footer details summary { cursor: pointer; list-style: none; }
-      footer p { margin: 4px 0; }
-      footer a { color: #a89780; }
+
+      /* Two words in the bottom left, written over the scene like everything else. */
+      #notices { position: fixed; left: 14px; bottom: 10px; display: flex; align-items: baseline; gap: 9px; font-size: 17px; text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.9); }
+      #notices .sep, dialog .sep { color: var(--gold); opacity: 0.8; font-size: 0.8em; }
+      button.link { all: unset; cursor: pointer; color: var(--dim); font: inherit; font-weight: 600; letter-spacing: 0.01em; }
+      button.link:hover, button.link:focus-visible { color: var(--crimson); }
+      button.link[aria-pressed='true'] { color: var(--gold); }
+      button.link[aria-pressed='true']:hover { color: var(--crimson); }
+
+      /* The notices: a panel drawn over the cathedral, which stays in view behind it. */
+      dialog { width: min(680px, calc(100vw - 32px)); max-height: min(78vh, 760px); box-sizing: border-box; padding: 0; border: 1px solid rgba(160, 154, 142, 0.38); background: rgba(8, 8, 8, 0.9); color: var(--text); font: 17px/1.55 var(--face); overflow: hidden; }
+      dialog[open] { display: flex; flex-direction: column; }
+      dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+      dialog header { display: flex; align-items: baseline; gap: 18px; padding: 18px 22px 12px; border-bottom: 1px solid rgba(160, 154, 142, 0.22); }
+      dialog h2 { margin: 0; flex: 1; font-size: 28px; font-weight: 600; color: var(--gold); text-shadow: 0 0 6px rgba(222, 180, 89, 0.45); }
+      dialog .langs { display: flex; gap: 8px; align-items: baseline; font-size: 16px; }
+      dialog .close { font-size: 16px; }
+      dialog .body { overflow-y: auto; padding: 6px 22px 20px; }
+      dialog .body p { margin: 12px 0; }
+      dialog .body b { color: var(--gold); font-weight: 600; }
+      dialog .body a { color: var(--text); text-decoration-color: rgba(222, 180, 89, 0.6); }
+      dialog .body a:hover { color: var(--crimson); }
+      dialog .body code { font-family: 'SFMono-Regular', Consolas, Menlo, monospace; font-size: 0.82em; color: var(--text); }
+      dialog .body .small { color: var(--dim); font-size: 15px; }
     </style>
   </head>
   <body>
     <canvas id="view" aria-label="An endless cathedral where priests pray in Latin"></canvas>
-    <footer>
-      <details>
-        <summary>Satire · grants no remission of anything · disclaimers &amp; credits</summary>
-        <p><b>Satire.</b> Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.</p>
-        <p><b>Real cost.</b> Every prayer spends tokens your provider bills you for. The budget counts prayer text only; actual usage is roughly 2 to 5 times higher, and more in long sessions.</p>
-        <p><b>Generated text.</b> Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.</p>
-        <p><b>In-session tier.</b> In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out, which is why those prayers are shown only to you.</p>
-        <p><b>Independent project.</b> Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).</p>
-        <p><b>Deletion.</b> <code>/indulgence forget</code> deletes your account, follow edges, sessions and candles. You can also revoke the OAuth app in your GitHub settings at any time.</p>
-        <p><b>Privacy.</b> Strangers see an anonymous priest saying canned prayers, plus the names on candles. Your mutuals see your name and read your generated prayers. Prayer text disappears when your priest leaves.</p>
-        <p><b>Art.</b> Character sprites from the <a href="https://github.com/liberatedpixelcup/Universal-LPC-Spritesheet-Character-Generator">Universal LPC Spritesheet Character Generator</a>; see <a href="/sprites/CREDITS.txt">credits</a>. Type: Grenze Gotisch by Omnibus-Type, under the <a href="/fonts/OFL.txt">SIL Open Font License</a>.</p>
-      </details>
-    </footer>
+
+    <nav id="notices" aria-label="Notices">
+      <button type="button" class="link" data-open="repudiationes" lang="la">Repudiationes</button>
+      <span class="sep" aria-hidden="true">·</span>
+      <button type="button" class="link" data-open="merita" lang="la">Merita</button>
+    </nav>
+
+    <dialog id="notice" aria-labelledby="notice-title">
+      <header>
+        <h2 id="notice-title"></h2>
+        <div class="langs" role="group" aria-label="Lingua · Language">
+          <button type="button" class="link" data-lang="la" lang="la">Latine</button>
+          <span class="sep" aria-hidden="true">·</span>
+          <button type="button" class="link" data-lang="en" lang="en">English</button>
+        </div>
+        <!-- "Claude" is Latin for "close!" -->
+        <button type="button" class="link close" data-close></button>
+      </header>
+      <div class="body">
+        <!-- Disclaimers ------------------------------------------------------------------>
+        <section data-notice="repudiationes" lang="la" data-title="Repudiationes" hidden>
+          <p><b>Satura.</b> Haec satura est, nulli ecclesiae coniuncta neque ab ulla probata. Nullus effectus spiritalis promittitur: indulgentiae hic venditae nihil prorsus remittunt.</p>
+          <p><b>Pretium verum.</b> Quaeque oratio tesseras (<i>tokens</i>) consumit, quas provisor tuus tibi imputat. Ratio solum textum orationum numerat; usus verus fere bis aut quinquies maior est, in sessionibus longis etiam maior.</p>
+          <p><b>Textus generatus.</b> Machina tua orationes componit. Latinitas earum vitiosa, insolita aut theologice dubia esse potest.</p>
+          <p><b>Gradus in sessione.</b> Hoc modo machina quae sessionem tuam videt orationes scribit. Effluvia manifesta excernuntur, sed nulla omnino excludi possunt; quam ob rem hae orationes tibi soli ostenduntur.</p>
+          <p><b>Opus independens.</b> Neque GitHub neque Anthropic neque Clockwork Labs (SpacetimeDB) coniunctum.</p>
+          <p><b>Deletio.</b> Mandatum <code>/indulgence forget</code> rationem tuam, nexus sectatorum, sessiones et candelas delet. Licentiam OAuth quoque in optionibus GitHub tuis quovis tempore revocare potes.</p>
+          <p><b>Secretum.</b> Ignoti sacerdotem sine nomine vident orationes paratas recitantem, et nomina in candelis. Amici mutui nomen tuum vident et orationes tuas legunt. Textus orationum evanescit cum sacerdos tuus discedit.</p>
+        </section>
+        <section data-notice="repudiationes" lang="en" data-title="Disclaimers" hidden>
+          <p><b>Satire.</b> Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.</p>
+          <p><b>Real cost.</b> Every prayer spends tokens your provider bills you for. The budget counts prayer text only; actual usage is roughly 2 to 5 times higher, and more in long sessions.</p>
+          <p><b>Generated text.</b> Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.</p>
+          <p><b>In-session tier.</b> In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out, which is why those prayers are shown only to you.</p>
+          <p><b>Independent project.</b> Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).</p>
+          <p><b>Deletion.</b> <code>/indulgence forget</code> deletes your account, follow edges, sessions and candles. You can also revoke the OAuth app in your GitHub settings at any time.</p>
+          <p><b>Privacy.</b> Strangers see an anonymous priest saying canned prayers, plus the names on candles. Your mutuals see your name and read your generated prayers. Prayer text disappears when your priest leaves.</p>
+        </section>
+
+        <!-- Credits ---------------------------------------------------------------------->
+        <section data-notice="merita" lang="la" data-title="Merita" hidden>
+          <p><b>Figurae.</b> Sacerdotes et thuriferarius ex <a href="https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator" target="_blank" rel="noopener noreferrer">Universal LPC Spritesheet Character Generator</a> compositi sunt, ex artificiis <i>Liberated Pixel Cup</i> et collaboratorum in <a href="https://opengameart.org" target="_blank" rel="noopener noreferrer">OpenGameArt.org</a>. Auctores partium: Ahmad3366, Benjamin K. Smith (BenCreating), bluecarrot16, Durrani, Eliza Wyatt (ElizaWy), Evert, JaidynReiman, Joe White, Johannes Sjölund (wulax), Manuel Riecke (MrBeast), Matthew Krohn (makrohn), MuffinElZangano, Nila122, Pierre Vigier (pvigier), Stephen Challener (Redshrike), TheraHedwig.</p>
+          <p class="small">Licentia OGA-BY 3.0, quam omnes partes offerunt; plurimae etiam CC-BY-SA 3.0 et GPL 3.0. Singulas partes cum auctoribus, licentiis et fontibus vide in <a href="/sprites/CREDITS.txt" target="_blank">indice pleno</a>.</p>
+          <p><b>Litterae.</b> <a href="https://github.com/Omnibus-Type/Grenze-Gotisch" target="_blank" rel="noopener noreferrer">Grenze Gotisch</a>, ab Omnibus-Type (The Grenze Gotisch Project Authors), sub licentia <a href="/fonts/OFL.txt" target="_blank">SIL Open Font License 1.1</a>.</p>
+          <p><b>Orationes.</b> Orationes paratae (Pater noster, Ave Maria, Gloria Patri et ceterae) textus traditi sunt, ante annum MCMXXIX editi, in dominio publico.</p>
+          <p><b>Verba.</b> Index verborum Latinorum ex <a href="https://ebible.org/find/details.php?id=latVUC" target="_blank" rel="noopener noreferrer">Vulgata Clementina</a> (in dominio publico, per eBible.org). Index verborum vetitorum ex <a href="https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words" target="_blank" rel="noopener noreferrer">LDNOOBW</a>, sub licentia CC BY 4.0.</p>
+          <p><b>Programmata.</b> <a href="https://github.com/clockworklabs/SpacetimeDB" target="_blank" rel="noopener noreferrer">SpacetimeDB</a> a Clockwork Labs (bibliotheca TypeScript sub ISC, crate Rust sub Apache 2.0); <a href="https://github.com/modelcontextprotocol/typescript-sdk" target="_blank" rel="noopener noreferrer">Model Context Protocol TypeScript SDK</a> (MIT); <a href="https://github.com/panva/jose" target="_blank" rel="noopener noreferrer">jose</a> a Filip Skokan (MIT); <a href="https://expressjs.com" target="_blank" rel="noopener noreferrer">Express</a> (MIT); <a href="https://vite.dev" target="_blank" rel="noopener noreferrer">Vite</a> (MIT). Ad demonstrationem: <a href="https://playwright.dev" target="_blank" rel="noopener noreferrer">Playwright</a> a Microsoft (Apache 2.0) et <a href="https://ffmpeg.org" target="_blank" rel="noopener noreferrer">FFmpeg</a>.</p>
+          <p><b>Fulgor aureus.</b> Fulgor litterarum aurearum ex TuringOS mutuatus est.</p>
+          <p class="small">Codex huius operis sub licentia MIT.</p>
+        </section>
+        <section data-notice="merita" lang="en" data-title="Credits" hidden>
+          <p><b>Figures.</b> The priests and the thurifer are composed with the <a href="https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator" target="_blank" rel="noopener noreferrer">Universal LPC Spritesheet Character Generator</a>, from art made for the <i>Liberated Pixel Cup</i> and by contributors on <a href="https://opengameart.org" target="_blank" rel="noopener noreferrer">OpenGameArt.org</a>. Layer artists: Ahmad3366, Benjamin K. Smith (BenCreating), bluecarrot16, Durrani, Eliza Wyatt (ElizaWy), Evert, JaidynReiman, Joe White, Johannes Sjölund (wulax), Manuel Riecke (MrBeast), Matthew Krohn (makrohn), MuffinElZangano, Nila122, Pierre Vigier (pvigier), Stephen Challener (Redshrike), TheraHedwig.</p>
+          <p class="small">Used under OGA-BY 3.0, which every layer offers; most also offer CC-BY-SA 3.0 and GPL 3.0. See the <a href="/sprites/CREDITS.txt" target="_blank">full list</a> for each layer's artists, licences and sources.</p>
+          <p><b>Type.</b> <a href="https://github.com/Omnibus-Type/Grenze-Gotisch" target="_blank" rel="noopener noreferrer">Grenze Gotisch</a> by Omnibus-Type (The Grenze Gotisch Project Authors), under the <a href="/fonts/OFL.txt" target="_blank">SIL Open Font License 1.1</a>.</p>
+          <p><b>Prayers.</b> The canned prayers (Pater noster, Ave Maria, Gloria Patri and the rest) are traditional texts published before 1929, in the public domain.</p>
+          <p><b>Words.</b> The Latin wordlist comes from the <a href="https://ebible.org/find/details.php?id=latVUC" target="_blank" rel="noopener noreferrer">Clementine Vulgate</a> (public domain, via eBible.org). The denylist derives from <a href="https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words" target="_blank" rel="noopener noreferrer">LDNOOBW</a>, under CC BY 4.0.</p>
+          <p><b>Software.</b> <a href="https://github.com/clockworklabs/SpacetimeDB" target="_blank" rel="noopener noreferrer">SpacetimeDB</a> by Clockwork Labs (TypeScript SDK under ISC, Rust crate under Apache 2.0); the <a href="https://github.com/modelcontextprotocol/typescript-sdk" target="_blank" rel="noopener noreferrer">Model Context Protocol TypeScript SDK</a> (MIT); <a href="https://github.com/panva/jose" target="_blank" rel="noopener noreferrer">jose</a> by Filip Skokan (MIT); <a href="https://expressjs.com" target="_blank" rel="noopener noreferrer">Express</a> (MIT); <a href="https://vite.dev" target="_blank" rel="noopener noreferrer">Vite</a> (MIT). For the demo: <a href="https://playwright.dev" target="_blank" rel="noopener noreferrer">Playwright</a> by Microsoft (Apache 2.0) and <a href="https://ffmpeg.org" target="_blank" rel="noopener noreferrer">FFmpeg</a>.</p>
+          <p><b>Gold shimmer.</b> The shimmer on the gold text is borrowed from TuringOS.</p>
+          <p class="small">The code of this project is under the MIT licence.</p>
+        </section>
+      </div>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

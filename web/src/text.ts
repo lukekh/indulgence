@@ -27,11 +27,15 @@ export function font(px: number, weight = 500): string {
   return `${weight} ${px}px ${FACE}`;
 }
 
-/** Load the face before the first words are drawn (canvas text does not wait for it). */
+/**
+ * Load the face before the first words are drawn (canvas text does not wait for it). The
+ * viewer declares it in CSS too, for the notices; elsewhere it is added here.
+ */
 export async function loadFont(): Promise<void> {
   try {
-    const face = new FontFace('Grenze Gotisch', `url(${FONT_URL})`, { weight: '100 900' });
-    document.fonts.add(await face.load());
+    const declared = [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'Grenze Gotisch');
+    if (!declared) document.fonts.add(new FontFace('Grenze Gotisch', `url(${FONT_URL})`, { weight: '100 900' }));
+    await document.fonts.load('500 16px "Grenze Gotisch"');
   } catch {
     // Fall back to Georgia.
   }
@@ -138,16 +142,19 @@ export function placeLine(ctx: CanvasRenderingContext2D, full: string, cx: numbe
   return { x, y: Math.round(bottom - h), w, h, px };
 }
 
-/** Draw (the typed part of) a sentence placed by `placeLine`. */
-export function drawLine(ctx: CanvasRenderingContext2D, r: Rect & { px: number }, shown: string, own: boolean, now: number, alpha: number, dx = 0, dy = 0) {
+/**
+ * Draw (the typed part of) a line placed by `placeLine`: shimmering gold for your own
+ * priest, crimson for a friend you picked out in the key, white for everyone else.
+ */
+export function drawLine(ctx: CanvasRenderingContext2D, r: Rect & { px: number }, shown: string, style: TagStyle, now: number, alpha: number, dx = 0, dy = 0) {
   if (!shown || alpha <= 0) return;
   ctx.save();
-  ctx.font = prayerFont(r.px, own);
+  ctx.font = prayerFont(r.px, style === 'own');
   ctx.textBaseline = 'top';
   const x = r.x + dx;
   const y = r.y + dy + Math.round(r.px * 0.05);
-  if (own) goldText(ctx, shown, x, y, r.px, now, x, r.w, alpha);
-  else plainText(ctx, shown, x, y, r.px, WHITE, alpha);
+  if (style === 'own') goldText(ctx, shown, x, y, r.px, now, x, r.w, alpha);
+  else plainText(ctx, shown, x, y, r.px, style === 'marked' ? CRIMSON : WHITE, alpha);
   ctx.restore();
 }
 
@@ -209,21 +216,37 @@ export function hoverText(ctx: CanvasRenderingContext2D, x: number, y: number, t
   ctx.restore();
 }
 
-export function closingCard(ctx: CanvasRenderingContext2D, alpha: number, title: string, subtitle: string, now: number) {
+/**
+ * A title in shimmering gold over the middle of the screen, with a line beneath it in
+ * gold: "Indulgence" as you arrive, "Ite, missa est" as you leave. Written over the scene,
+ * with only a soft shadow behind the words so they read.
+ */
+export function titleOver(ctx: CanvasRenderingContext2D, alpha: number, title: string, subtitle: string, now: number) {
+  if (alpha <= 0) return;
   const { width: w, height: h } = ctx.canvas;
+  const px = Math.max(32, Math.round(Math.min(w, h) / 8.5));
+  const spx = Math.max(16, Math.round(px * 0.36));
+  const cy = Math.round(h * 0.42);
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#0a0909';
-  ctx.fillRect(0, 0, w, h);
-  const px = Math.max(26, Math.round(Math.min(w, h) / 11));
+  ctx.translate(w / 2, cy + px * 0.2);
+  ctx.scale(1, 0.42);
+  const r = Math.max(px * 6, w * 0.32);
+  const shade = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+  shade.addColorStop(0, 'rgba(0, 0, 0, 0.6)');
+  shade.addColorStop(0.55, 'rgba(0, 0, 0, 0.35)');
+  shade.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+  ctx.restore();
+
+  ctx.save();
   ctx.textBaseline = 'middle';
   ctx.font = font(px, 600);
   const tw = ctx.measureText(title).width;
-  goldText(ctx, title, Math.round(w / 2 - tw / 2), Math.round(h / 2 - px * 0.4), px, now, w / 2 - tw / 2, tw, alpha);
-  ctx.font = font(Math.round(px * 0.36), 500);
+  goldText(ctx, title, Math.round(w / 2 - tw / 2), cy, px, now, w / 2 - tw / 2, tw, alpha);
+  ctx.font = font(spx, 500);
   const sw = ctx.measureText(subtitle).width;
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = DIM;
-  ctx.fillText(subtitle, Math.round(w / 2 - sw / 2), Math.round(h / 2 + px * 0.75));
+  goldText(ctx, subtitle, Math.round(w / 2 - sw / 2), Math.round(cy + px * 0.82), spx, now, w / 2 - sw / 2, sw, alpha * 0.95);
   ctx.restore();
 }

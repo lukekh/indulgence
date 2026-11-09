@@ -3,11 +3,11 @@
 // (candlelit and dithered) above the same thing raw (flat greys, before lighting and the
 // dither). render-assets.ts saves each sheet as a JPEG.
 
-import { C, type CandleName, type VestmentName } from '../../shared/constants';
-import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, TH, type Camera, type Drawable, type Viewport } from '../../web/src/view';
-import { AMBIENT, COL, GLOW_BEAM_ALPHA, GLOW_FLOOR_ALPHA, applyLighting, candleDrawable, candleFlame, drawFixedFlames, drawFlame, drawRays, drawStatic, fixedLights, furniture, glowsBetween, type CandleView, type Light } from '../../web/src/scene';
+import { C, seatPos, type CandleName, type VestmentName } from '../../shared/constants';
+import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Camera, type Drawable, type Viewport } from '../../web/src/view';
+import { AMBIENT, COL, GLOW_BEAM_ALPHA, GLOW_FLOOR_ALPHA, applyLighting, applyRays, candleDrawable, candleFlame, drawFixedFlames, drawFlame, drawRays, drawStatic, fixedLights, furniture, windowLightAt, GLASS, type CandleView, type Light } from '../../web/src/scene';
 import { ditherFrame } from '../../web/src/dither';
-import { PriestSprites, VESTMENTS } from '../../web/src/sprites';
+import { PriestSprites, VESTMENTS, type Side } from '../../web/src/sprites';
 import { FACE, loadFont } from '../../web/src/text';
 import type { Dir, Pose } from '../../web/src/motion';
 
@@ -29,7 +29,14 @@ const ctx2d = (c: HTMLCanvasElement) => c.getContext('2d', { willReadFrequently:
 // The nave, drawn as the viewer draws a frame (without priests or words)
 // ---------------------------------------------------------------------------
 
-function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean): HTMLCanvasElement {
+/** Figures placed in the nave (world tiles in `pose`), and whether the windows light their sides. */
+interface People {
+  sprites: PriestSprites;
+  figures: { name: VestmentName | 'thurifer'; pose: Pose }[];
+  rim: boolean;
+}
+
+function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean, people?: People): HTMLCanvasElement {
   const { baseW: w, baseH: h } = vp;
   const base = canvas(w, h);
   const ctx = ctx2d(base);
@@ -37,6 +44,15 @@ function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean): H
   drawStatic(ctx, cam, x0, x1, yMax, w, h);
   const drawables: Drawable[] = furniture(cam, x0, x1, yMax);
   for (const c of candles) drawables.push(candleDrawable(cam, c, NOW, false));
+  for (const f of people?.figures ?? []) {
+    const [fx, fy] = project(cam, f.pose.x, f.pose.y);
+    drawables.push({
+      depth: f.pose.y,
+      layer: LAYER.priest,
+      x: f.pose.x,
+      draw: (g) => (f.name === 'thurifer' ? void people!.sprites.drawThurifer(g, f.pose, fx, fy, { swing: 0.5 }) : people!.sprites.draw(g, f.name, f.pose, fx, fy)),
+    });
+  }
   for (const d of sortDrawables(drawables)) d.draw(ctx);
   if (!raw) {
     const lights: Light[] = fixedLights(cam, x0, x1, yMax);
@@ -45,10 +61,17 @@ function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean): H
       lights.push({ x: fx, y: fy, r: 30, power: 0.5 });
     }
     applyLighting(ctx, w, h, lights, AMBIENT);
+    ditherFrame(ctx, w, h);
     const rays = canvas(w, h);
-    const rctx = ctx2d(rays);
-    drawRays(rctx, cam, x0, x1, w, h, NOW, yMax);
-    ditherFrame(ctx, w, h, rctx.getImageData(0, 0, w, h).data);
+    const glows = drawRays(ctx2d(rays), cam, x0, x1, w, h);
+    applyRays(ctx, rays);
+    if (people?.rim) {
+      for (const f of people.figures) {
+        const [fx, fy] = project(cam, f.pose.x, f.pose.y);
+        const side: Side = Math.floor(f.pose.x / C.BAY_W) <= cam.bay ? 'left' : 'right';
+        people.sprites.litSide(ctx, f.name, f.pose, fx, fy, side, windowLightAt(glows, f.pose.x, f.pose.y));
+      }
+    }
   }
   drawFixedFlames(ctx, cam, x0, x1, yMax, NOW);
   candles.forEach((c, i) => {
@@ -58,13 +81,36 @@ function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean): H
   return base;
 }
 
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Crops of one render side by side, a few dark pixels apart. */
+function pair(src: HTMLCanvasElement, rects: Rect[], gap = 6): HTMLCanvasElement {
+  const w = rects.reduce((n, r) => n + r.w, 0) + gap * (rects.length - 1);
+  const h = Math.max(...rects.map((r) => r.h));
+  const out = canvas(w, h);
+  const g = out.getContext('2d')!;
+  g.fillStyle = BG;
+  g.fillRect(0, 0, w, h);
+  let x = 0;
+  for (const r of rects) {
+    g.drawImage(src, r.x, r.y, r.w, r.h, x, 0, r.w, r.h);
+    x += r.w + gap;
+  }
+  return out;
+}
+
 /** The window light alone, on black, at `gain` times its real strength. */
 function lightOnly(vp: Viewport, cam: Camera, gain: number): HTMLCanvasElement {
   const { baseW: w, baseH: h } = vp;
-  const { x0, x1, yMax } = visibleTiles(cam, vp);
+  const { x0, x1 } = visibleTiles(cam, vp);
   const rays = canvas(w, h);
   const rctx = ctx2d(rays);
-  drawRays(rctx, cam, x0, x1, w, h, NOW, yMax);
+  drawRays(rctx, cam, x0, x1, w, h);
   const img = rctx.getImageData(0, 0, w, h);
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -169,6 +215,30 @@ const FEET_Y = 40;
 
 type Figure = { caption: string; draw: (ctx: CanvasRenderingContext2D, fx: number, fy: number) => void };
 
+/**
+ * Figures on the nave floor, candlelit and dithered, with the window light on their left
+ * side: none, the faint edge they have everywhere, or standing in a pool of orange glass.
+ */
+function rimStrip(sprites: PriestSprites, figures: { caption: string; name: VestmentName | 'thurifer'; pose: Pose }[], mode: 'none' | 'faint' | 'pool'): HTMLCanvasElement {
+  const c = strip(
+    figures.map((f) => ({ caption: f.caption, draw: (g, fx, fy) => (f.name === 'thurifer' ? void sprites.drawThurifer(g, f.pose, fx, fy, { swing: 0.5 }) : sprites.draw(g, f.name, f.pose, fx, fy)) })),
+    true,
+  );
+  const g = ctx2d(c);
+  const orange = GLASS[1]!;
+  if (mode === 'pool') {
+    g.save();
+    g.globalCompositeOperation = 'screen';
+    g.fillStyle = `rgba(${orange.join(',')},${GLOW_FLOOR_ALPHA})`;
+    g.fillRect(0, 0, c.width, c.height);
+    g.restore();
+  }
+  if (mode !== 'none') {
+    figures.forEach((f, i) => sprites.litSide(g, f.name, f.pose, i * CELL_W + CELL_W / 2, FEET_Y, 'left', mode === 'pool' ? { colour: orange, strength: 1 } : undefined));
+  }
+  return c;
+}
+
 const pose = (dir: Dir, action: Pose['action'], t = 0.3): Pose => ({ x: 0, y: 0, dir, action, t, alpha: 1 });
 
 /** Figures side by side on the nave floor; in game, each lit by a nearby candle and dithered. */
@@ -231,32 +301,42 @@ async function main() {
   add('cathedral', sheet('The cathedral', `In game, empty, as on a 1440 × 900 screen (${vp.scale}×). The view repeats without end in every direction.`, [{ label: 'candlelit and dithered', src: nave(vp, cam, [], false), ...full }]));
   add('cathedral-raw', sheet('The cathedral, raw', `The same view before lighting and the dither (${vp.scale}×).`, [{ label: 'flat greys', src: nave(vp, cam, [], true), ...full }]));
 
-  // A pool of window light, with the camera moved down the nave to it.
-  const glow = glowsBetween(0, C.BAY_W - 1, 400).find((g) => g.bay === 0 && g.y0 > C.ROW_Y[0]!)!;
-  const glowCam: Camera = { ...cam, oy: Math.round(vp.baseH / 2 + 40 - ((glow.y0 + glow.y1) / 2) * TH) };
-  const [gx0] = project(glowCam, -2, 0);
-  const [gx1] = project(glowCam, C.BAY_W + 2, 0);
-  const crop = { x: gx0, y: 0, w: gx1 - gx0, h: vp.baseH, k: 2 };
+  // The window light, as it falls around your bay.
   add(
     'window-light',
-    sheet('Window light', `Dim, diffuse pools 3–4 rows deep with 5 rows between, from a third of the way along the pews to the far wall: ${Math.round(GLOW_FLOOR_ALPHA * 100)}% on the floor, ${Math.round(GLOW_BEAM_ALPHA * 100)}% in the rays from the window.`, [
-      { label: 'in game: candlelit and dithered (2×)', src: nave(vp, glowCam, [], false), ...crop },
-      { label: 'the light alone, at 5× its real strength (2×)', src: lightOnly(vp, glowCam, 5), ...crop },
+    sheet('Window light', `Dim, diffuse pools 3–4 rows deep: two down your column of pews with 5 rows between, one in each column beside it. ${Math.round(GLOW_FLOOR_ALPHA * 100)}% opacity on the floor, ${Math.round(GLOW_BEAM_ALPHA * 100)}% in the rays.`, [
+      { label: `in game (${vp.scale}×)`, src: nave(vp, cam, [], false), ...full },
+      { label: `the light alone, at 5× its real opacity (${vp.scale}×)`, src: lightOnly(vp, cam, 5), ...full },
     ]),
   );
 
   add('altar', naveSheet('The altar', 'One at the top of every bay: altar, cross, two candlesticks, before a dark reredos.', { x0: C.ALTAR_X[0]! - 4, x1: C.ALTAR_X[1]! + 5, y0: -2.8, y1: C.ALTAR_Y[1]! + 2.5 }, 4));
   add('pews', naveSheet('The pews', 'Long plain benches across the nave between the side aisles, with a candle on each end.', { x0: C.PEW_X[0]! - 2, x1: C.PEW_X[1]! + 3, y0: C.ROW_Y[2]! - 1.5, y1: C.ROW_Y[4]! + 0.6 }, 3));
 
-  // A stand with candles of every size, lit.
+  // Both stands beside your pews, with candles of every size, lit. Each faces your column.
   const sizes: [number, CandleName][] = [
     [1, 'taper'], [3, 'taper'], [6, 'taper'], [8, 'taper'],
     [12, 'votive'], [15, 'votive'], [18, 'votive'],
     [21, 'pillar'], [25, 'pillar'], [28, 'pillar'],
     [34, 'paschal'], [37, 'paschal'],
   ];
-  const candles: CandleView[] = sizes.map(([slot, size]) => ({ arcade: 0, slot, size, litAt: 0, expiresAt: NOW + 3_600_000 }));
-  add('votive-stand', naveSheet('The votive stand', 'Four iron tiers in the arcade, between two columns, with tapers, votives, pillars and paschal candles.', { x0: C.ARCADE_X[0]! - 1.5, x1: C.ARCADE_X[1]! + 1.5, y0: C.STAND_Y[0]! - 1.5, y1: C.STAND_Y[1]! + 1.5, above: 40 }, 5, candles));
+  const candles: CandleView[] = [0, 1].flatMap((arcade) => sizes.map(([slot, size]) => ({ arcade, slot, size, litAt: 0, expiresAt: NOW + 3_600_000 })));
+  const standCrop = (arcade: number): Rect => {
+    const bx = arcade * C.BAY_W;
+    const [ax, ay] = project(cam, bx + C.ARCADE_X[0]! - 1.5, C.STAND_Y[0]! - 1.5);
+    const [bxp, byp] = project(cam, bx + C.ARCADE_X[1]! + 1.5, C.STAND_Y[1]! + 1.5);
+    return { x: ax, y: ay - 40, w: bxp - ax, h: byp - ay + 40 };
+  };
+  const stands = (raw: boolean) => pair(nave(vp, cam, candles, raw), [standCrop(0), standCrop(1)]);
+  const standsIn = stands(false);
+  const standsRaw = stands(true);
+  add(
+    'votive-stand',
+    sheet('The votive stands', 'Four iron tiers in each arcade, with tapers, votives, pillars and paschal candles, stepping up away from your column of pews: left of it (facing right) and right of it (facing left).', [
+      { label: 'in game: candlelit and dithered (4×)', src: standsIn, x: 0, y: 0, w: standsIn.width, h: standsIn.height, k: 4 },
+      { label: 'raw: flat greys before lighting and the dither (4×)', src: standsRaw, x: 0, y: 0, w: standsRaw.width, h: standsRaw.height, k: 4 },
+    ]),
+  );
 
   // Every vestment in every pose it is drawn in.
   const poses: { caption: string; pose: Pose }[] = [
@@ -287,6 +367,38 @@ async function main() {
   }
   lineup.push({ caption: 'thurifer', draw: (ctx, fx, fy) => void sprites.drawThurifer(ctx, pose('right', 'walk'), fx - 4, fy, { swing: 0.6 }) });
   add('priests', figureSheet('The clergy', 'Friar, priest, bishop and cardinal by spend tier, and the thurifer.', lineup, 4));
+
+  // The windows lighting the side of each figure that faces them (the left, in your bay).
+  const kneelers: People['figures'] = [];
+  for (let row = 0; row <= 6; row++) {
+    const seats: [number, number][] = row % 2 ? [[1, 0], [1, 3], [1, 6], [0, 2]] : [[1, 1], [1, 5], [0, 0], [0, 5]];
+    seats.forEach(([half, seat], i) => {
+      const [x, y] = seatPos(0, row, half, seat);
+      kneelers.push({ name: VESTMENTS[(row + i) % VESTMENTS.length]!, pose: { x, y, dir: 'up', action: 'kneel', t: 0, alpha: 1 } });
+    });
+  }
+  kneelers.push({ name: 'friar', pose: { x: C.SIDE_AISLE_X[1]!, y: 12, dir: 'up', action: 'walk', t: 0.4, alpha: 1 } });
+  kneelers.push({ name: 'priest', pose: { x: 11.5, y: 13, dir: 'right', action: 'walk', t: 0.2, alpha: 1 } });
+  const [rx0, ry0] = project(cam, C.ARCADE_X[1]! - 0.5, C.ROW_Y[0]! - 1.5);
+  const [rx1, ry1] = project(cam, C.BAY_W + 0.5, C.ROW_Y[6]! + 0.8);
+  const pews = { x: rx0, y: ry0 - 30, w: rx1 - rx0, h: ry1 - ry0 + 30, k: 3 };
+  const closeUps = [
+    ...VESTMENTS.map((v) => ({ caption: v, name: v, pose: pose('up', 'kneel') })),
+    { caption: 'priest, along a pew', name: 'priest' as const, pose: pose('left', 'walk') },
+    { caption: 'thurifer', name: 'thurifer' as const, pose: pose('right', 'walk') },
+  ];
+  const cw = CELL_W * closeUps.length;
+  const caps = closeUps.map((f, i) => ({ x: i * CELL_W + CELL_W / 2, text: f.caption }));
+  add(
+    'window-rim',
+    sheet('Window light on the priests', 'The side of each figure facing the windows (the left, in your bay) catches their light: a faint pale edge everywhere, and the glass colour in a pool of light.', [
+      { label: 'in game, with the window light on their sides (3×)', src: nave(vp, cam, [], false, { sprites, figures: kneelers, rim: true }), ...pews },
+      { label: 'the same without it, for comparison (3×)', src: nave(vp, cam, [], false, { sprites, figures: kneelers, rim: false }), ...pews },
+      { label: 'close up, without window light (6×)', src: rimStrip(sprites, closeUps, 'none'), x: 0, y: 0, w: cw, h: CELL_H, k: 6, captions: caps },
+      { label: 'close up, the faint edge from the windows they have everywhere (6×)', src: rimStrip(sprites, closeUps, 'faint'), x: 0, y: 0, w: cw, h: CELL_H, k: 6, captions: caps },
+      { label: 'close up, standing in a pool of orange glass light (6×)', src: rimStrip(sprites, closeUps, 'pool'), x: 0, y: 0, w: cw, h: CELL_H, k: 6, captions: caps },
+    ]),
+  );
 
   api.names = [...out.keys()];
   api.ready = true;

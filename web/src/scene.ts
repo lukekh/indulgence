@@ -5,7 +5,7 @@
 // shafts of light through unseen windows high in the vault.
 
 import { C, type CandleName } from '../../shared/constants';
-import { LAYER, project, TH, TW, type Camera, type Drawable } from './view';
+import { LAYER, project, standFacesLeft, unproject, TH, TW, type Camera, type Drawable } from './view';
 import { slotPoint } from './motion';
 
 const BAY_W = C.BAY_W;
@@ -163,15 +163,16 @@ export function furniture(cam: Camera, x0: number, x1: number, yMax: number): Dr
         });
       }
     }
-    // Votive stand: four iron tiers in the arcade.
+    // Votive stand: four iron tiers in the arcade, stepping up away from your column of pews.
+    const facesLeft = standFacesLeft(cam, b);
     out.push({
       depth: C.STAND_Y[0]! - 0.5,
       layer: LAYER.furniture,
       x: bx,
       draw: (ctx) => {
         for (let t = 0; t < C.STAND_TIERS; t++) {
-          const xr = bx + C.STAND_X[1]! + 0.4 - t * 0.7;
-          box(ctx, cam, xr - 0.7, xr, C.STAND_Y[0]! - 0.3, C.STAND_Y[1]! + 0.3, 3 + t * 3, '#2a2928', COL.iron);
+          const xa = facesLeft ? bx + C.STAND_X[0]! - 0.4 + t * 0.7 : bx + C.STAND_X[1]! + 0.4 - t * 0.7 - 0.7;
+          box(ctx, cam, xa, xa + 0.7, C.STAND_Y[0]! - 0.3, C.STAND_Y[1]! + 0.3, 3 + t * 3, '#2a2928', COL.iron);
         }
       },
     });
@@ -196,7 +197,7 @@ const CANDLE_SHAPE: Record<CandleName, { w: number; h: number }> = {
 
 /** A candle on its stand. Its flame is drawn after the dither pass, if lit. */
 export function candleDrawable(cam: Camera, c: CandleView, now: number, highlight: boolean): Drawable & { hit: [number, number, number, number] } {
-  const p = slotPoint(c.arcade, c.slot);
+  const p = slotPoint(c.arcade, c.slot, standFacesLeft(cam, c.arcade));
   const [cx, cy] = project(cam, p.x, p.y);
   const shape = CANDLE_SHAPE[c.size];
   const top = cy - 3 - p.lift - shape.h;
@@ -272,7 +273,7 @@ export function drawFixedFlames(ctx: CanvasRenderingContext2D, cam: Camera, x0: 
 
 /** Where a stand candle's flame is. */
 export function candleFlame(cam: Camera, c: CandleView): [number, number] {
-  const p = slotPoint(c.arcade, c.slot);
+  const p = slotPoint(c.arcade, c.slot, standFacesLeft(cam, c.arcade));
   const [cx, cy] = project(cam, p.x, p.y);
   return [cx, cy - 3 - p.lift - CANDLE_SHAPE[c.size].h - 1];
 }
@@ -321,14 +322,16 @@ export const GLASS: [number, number, number][] = [
 /** Rows of pews one pool of window light covers, and the rows of shadow between pools. */
 export const GLOW_ROWS = 3.5;
 export const GLOW_GAP_ROWS = 5;
-/** Strength (dither coverage) of the light where it lies on the floor, and of its rays. */
+/** Opacity of the light where it lies on the floor, and of its rays, laid over the frame. */
 export const GLOW_FLOOR_ALPHA = 0.14;
 export const GLOW_BEAM_ALPHA = 0.03;
 /** Width of one band of colour in the pool, base px: the glass repeats across it. */
 const GLASS_BAND_PX = 26;
-/** How high the windows are above the floor, base px, and how far the beam leans toward them. */
+/** How high the windows are above the floor, base px, and how far the rays lean toward them. */
 const WINDOW_HEIGHT_PX = 260;
 const BEAM_LEAN = 0.5;
+/** How far the light stops short of an arcade's columns, tiles. */
+const NAVE_INSET = 0.6;
 
 function hash(n: number): number {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -342,42 +345,90 @@ export interface Glow {
   x1: number;
   y0: number;
   y1: number;
+  /** Which side its window is on; the pool reaches across to the opposite wall. */
+  fromLeft: boolean;
   /** The four glass colours in the order they fall across the pool. */
   colours: [number, number, number][];
 }
 
 /**
- * Pools of light from the windows high on the left of each bay: 3–4 rows deep with 5 rows
- * of shadow between, from a third of the way along the pews across to the far wall.
+ * Pools of window light, arranged around the viewer's own bay (`centre`): two down its
+ * column of pews, 3–4 rows deep with 5 rows of shadow between, and one in each column
+ * beside it, lying in that gap. Each starts a third of the way along the pews from its
+ * window and reaches the far side of the nave, stopping short of the arcade. Bays to the right are lit from their right-hand window,
+ * so the part of them in view catches the light. `yBottom` is the bottom of the screen.
  */
-export function glowsBetween(x0: number, x1: number, yMax: number): Glow[] {
+export function glowsAround(centre: number, x0: number, x1: number, yBottom: number): Glow[] {
   const out: Glow[] = [];
   const pewW = C.PEW_X[1]! - C.PEW_X[0]!;
+  const top = C.ROW_Y[0]! - 1.5;
+  const rows = (yBottom - top) / C.PEW_STEP_Y;
+  // The two pools in the middle, centred down the screen.
+  const first = Math.max(0, (rows - (2 * GLOW_ROWS + GLOW_GAP_ROWS)) / 2);
+  const second = first + GLOW_ROWS + GLOW_GAP_ROWS;
+  const between = first + GLOW_ROWS + (GLOW_GAP_ROWS - GLOW_ROWS) / 2;
   for (let b = Math.floor(x0 / BAY_W) - 1; b <= Math.floor(x1 / BAY_W) + 1; b++) {
     const bx = b * BAY_W;
-    const period = GLOW_ROWS + GLOW_GAP_ROWS;
-    const offset = Math.floor(hash(b) * period * 2) / 2;
-    for (let k = 0; ; k++) {
-      const y0 = C.ROW_Y[0]! + (offset + k * period) * C.PEW_STEP_Y - 1.5;
-      if (y0 > yMax) break;
-      const order = [...GLASS].sort((p, q) => hash(b * 3.7 + k + p[0]) - hash(b * 3.7 + k + q[0]));
-      out.push({ bay: b, x0: bx + C.PEW_X[0]! + pewW / 3, x1: bx + BAY_W, y0, y1: y0 + GLOW_ROWS * C.PEW_STEP_Y, colours: order });
-    }
+    const fromLeft = b <= centre;
+    // The nave between the arcades: light never falls among the columns and votive stands.
+    const inner: [number, number] = [bx + C.ARCADE_X[1]! + NAVE_INSET, bx + BAY_W + C.ARCADE_X[0]! - NAVE_INSET];
+    const xs: [number, number] = fromLeft ? [bx + C.PEW_X[0]! + pewW / 3, inner[1]] : [inner[0], bx + C.PEW_X[1]! - pewW / 3];
+    const starts = b === centre ? [first, second] : [between + (hash(b) - 0.5) * 1.2];
+    starts.forEach((row, k) => {
+      const y0 = top + row * C.PEW_STEP_Y;
+      const colours = [...GLASS].sort((p, q) => hash(b * 3.7 + k + p[0]) - hash(b * 3.7 + k + q[0]));
+      out.push({ bay: b, x0: xs[0], x1: xs[1], y0, y1: y0 + GLOW_ROWS * C.PEW_STEP_Y, fromLeft, colours });
+    });
   }
   return out;
 }
 
+/**
+ * The window light at a point on the floor (world tiles), if it lies in a pool: the glass
+ * colour there and how strong it is (0 … 1, soft at the pool's edges).
+ */
+export function windowLightAt(glows: Glow[], x: number, y: number): { colour: [number, number, number]; strength: number } | undefined {
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  for (const g of glows) {
+    const across = g.fromLeft ? clamp((x - (g.x0 - 1.5)) / 3) * clamp(g.x1 - x) : clamp((g.x1 + 1.5 - x) / 3) * clamp(x - g.x0);
+    const down = clamp((y - (g.y0 - 1)) / 2) * clamp((g.y1 + 1 - y) / 2);
+    const strength = across * down;
+    if (strength <= 0) continue;
+    // The same diagonal bands of glass as the pool is drawn with.
+    const w = (g.x1 - g.x0) * TW;
+    const h = (g.y1 - g.y0) * TH;
+    const t = clamp(((x - g.x0) * TW * w + (y - g.y0) * TH * h) / (w * w + h * h));
+    const bands = Math.max(g.colours.length, Math.round(Math.hypot(w, h) / GLASS_BAND_PX));
+    const f = t * (bands - 1);
+    const a = g.colours[Math.floor(f) % g.colours.length]!;
+    const b = g.colours[Math.ceil(f) % g.colours.length]!;
+    const k = f - Math.floor(f);
+    return { colour: [0, 1, 2].map((c) => Math.round(a[c]! + (b[c]! - a[c]!) * k)) as [number, number, number], strength };
+  }
+  return undefined;
+}
+
 const glowCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : undefined;
 
+/** Lay the window light over the finished frame: a soft, low-opacity glow. */
+export function applyRays(ctx: CanvasRenderingContext2D, rays: HTMLCanvasElement) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.drawImage(rays, 0, 0);
+  ctx.restore();
+}
+
 /**
- * Window light, drawn into a separate canvas: its alpha is the light's strength (the dither
- * colours that share of pixels), its colour the glass it came through. A dim, diffuse pool on
- * the floor and pews, and fainter rays slanting down onto it from the window.
+ * Window light, drawn into its own canvas and laid over the finished (dithered) frame as a
+ * soft glow: its alpha is the light's opacity, its colour the glass it came through. A dim,
+ * diffuse pool on the floor and pews, and fainter rays slanting down onto it from the window.
  */
-export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number, x1: number, width: number, height: number, now: number, yMax = 200) {
+export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number, x1: number, width: number, height: number): Glow[] {
   ctx.clearRect(0, 0, width, height);
-  if (!glowCanvas) return;
-  for (const g of glowsBetween(x0, x1, yMax)) {
+  const [, yBottom] = unproject(cam, width / 2, height);
+  const glows = glowsAround(cam.bay, x0, x1, yBottom);
+  if (!glowCanvas) return glows;
+  for (const g of glows) {
     const [sx0, sy0] = project(cam, g.x0, g.y0);
     const [sx1, sy1] = project(cam, g.x1, g.y1);
     const w = sx1 - sx0;
@@ -393,9 +444,9 @@ export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number,
       return grad;
     };
 
-    // Rays: one narrow shaft per pane of glass, from the window high on the left down onto
-    // the pool, narrowing toward the window, at a slow drift as the sun moves.
-    const lean = WINDOW_HEIGHT_PX * (BEAM_LEAN + 0.03 * Math.sin(now / 20000 + g.bay));
+    // Rays: one narrow shaft per pane of glass, from the window high on its side down onto
+    // the pool, narrowing toward the window.
+    const lean = (g.fromLeft ? 1 : -1) * WINDOW_HEIGHT_PX * BEAM_LEAN;
     const n = g.colours.length;
     const foot = sy0 + h * 0.55;
     ctx.save();
@@ -415,7 +466,7 @@ export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number,
     });
     ctx.restore();
 
-    // The pool: soft on every side, fading in a third of the way along the pews.
+    // The pool: soft on every side, fading in a third of the way along the pews from its window.
     const m = 24;
     glowCanvas.width = w + m * 2;
     glowCanvas.height = h + m * 2;
@@ -423,7 +474,7 @@ export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number,
     gc.fillStyle = glass(gc, m, m);
     gc.fillRect(0, 0, glowCanvas.width, glowCanvas.height);
     gc.globalCompositeOperation = 'destination-in';
-    const across = gc.createLinearGradient(m - 1.5 * TW, 0, m + w, 0);
+    const across = g.fromLeft ? gc.createLinearGradient(m - 1.5 * TW, 0, m + w, 0) : gc.createLinearGradient(m + w + 1.5 * TW, 0, m, 0);
     const inF = (3 * TW) / (w + 1.5 * TW);
     across.addColorStop(0, 'rgba(0,0,0,0)');
     across.addColorStop(inF, `rgba(0,0,0,${GLOW_FLOOR_ALPHA})`);
@@ -442,4 +493,5 @@ export function drawRays(ctx: CanvasRenderingContext2D, cam: Camera, x0: number,
     gc.globalCompositeOperation = 'source-over';
     ctx.drawImage(glowCanvas, sx0 - m, sy0 - m);
   }
+  return glows;
 }

@@ -34,6 +34,8 @@ export function viewportFor(displayW: number, displayH: number): Viewport {
 export interface Camera {
   ox: number;
   oy: number;
+  /** The viewer's own bay, the one centred on screen: some things are arranged around it. */
+  bay: number;
 }
 
 /** The middle of the bay a world x belongs to: the altar's centre line. */
@@ -43,7 +45,15 @@ export function bayCentreX(x: number): number {
 
 /** Centred across on world x `fx`, with the altar at the very top of the screen. */
 export function cameraFor(fx: number, vp: Pick<Viewport, 'baseW'>): Camera {
-  return { ox: Math.round(vp.baseW / 2 - fx * TW), oy: C.VIEW_TOP_PX };
+  return { ox: Math.round(vp.baseW / 2 - fx * TW), oy: C.VIEW_TOP_PX, bay: Math.floor(fx / C.BAY_W) };
+}
+
+/**
+ * Whether the votive stand in `arcade` faces left. Every stand faces in toward the viewer's
+ * own column of pews: those to its right face left, the rest face right.
+ */
+export function standFacesLeft(cam: Pick<Camera, 'bay'>, arcade: number): boolean {
+  return arcade > cam.bay;
 }
 
 /** Base-canvas position of a world point on the floor. */
