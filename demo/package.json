@@ -1,0 +1,21 @@
+{
+  "name": "indulgence-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Scripted end-to-end demo: boots SpacetimeDB, the module, the gate and the viewer, then plays or records a session.",
+  "scripts": {
+    "gif": "tsx record.ts --gif",
+    "quick": "tsx record.ts --quick",
+    "live": "tsx record.ts --live",
+    "sandbox": "tsx record.ts --sandbox",
+    "assets": "tsx render-assets.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "playwright": "^1.65.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "indulgence",
+  "owner": {
+    "name": "Luke Keating Hughes"
+  },
+  "metadata": {
+    "description": "The /indulgence plugin: satirical Latin prayers, paid for in tokens."
+  },
+  "plugins": [
+    {
+      "name": "indulgence",
+      "source": "./plugin",
+      "description": "Satire. Spend your own model tokens on Latin prayers in a shared, endless cathedral."
+    }
+  ]
+}

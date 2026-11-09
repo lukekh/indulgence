@@ -1,0 +1,17 @@
+[package]
+name = "indulgence-module"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+spacetimedb = { version = "=2.14.1" }
+log = "0.4"
+serde_json = "1"
+
+[build-dependencies]
+serde_json = "1"

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>/indulgence demo stage</title>
+<style>
+  :root { --bg: #17120f; --win: #1d1a17; --bar: #2a2622; --line: #3b342d; --fg: #e8e0d2; --dim: #8f8473; --gold: #e3bb5c; --green: #8fc28a; --red: #e07a6a; --blue: #8fb0e0; }
+  * { box-sizing: border-box; }
+  :root { --w: 1000px; --h: 660px; --font: 13px; }
+  html, body { margin: 0; width: var(--w); height: var(--h); overflow: hidden; background: radial-gradient(ellipse at 30% 20%, #2b211a, #0f0b09 70%); font: var(--font)/1.5 Menlo, 'SF Mono', Monaco, monospace; color: var(--fg); }
+  .win { position: absolute; border-radius: 9px; overflow: hidden; background: var(--win); box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06); }
+  .titlebar { height: 30px; background: var(--bar); display: flex; align-items: center; gap: 7px; padding: 0 12px; color: var(--dim); font: 12px -apple-system, 'Helvetica Neue', sans-serif; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+  .dot:nth-child(2) { background: #febc2e; } .dot:nth-child(3) { background: #28c840; }
+  .titlebar .title { flex: 1; text-align: center; margin-right: 50px; }
+  #term { left: 26px; top: 22px; width: calc(var(--w) - 52px); height: calc(var(--h) - 44px); }
+  .pane { padding: 10px 16px; white-space: pre-wrap; word-break: break-all; }
+  .pane-label { font: 11px -apple-system, 'Helvetica Neue', sans-serif; color: var(--dim); padding: 4px 16px; border-bottom: 1px solid var(--line); background: #211d1a; }
+  #gate { height: calc((var(--h) - 120px) * 0.34); border-bottom: 1px solid var(--line); overflow: hidden; }
+  #claude { height: calc((var(--h) - 120px) * 0.66); overflow: hidden; }
+  .prompt { color: var(--green); } .dim { color: var(--dim); } .gold { color: var(--gold); } .blue { color: var(--blue); }
+  .cursor { display: inline-block; width: 8px; height: 15px; background: var(--fg); vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .spinner::before { content: '✻'; color: var(--gold); display: inline-block; animation: spin 1.2s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #browser { left: 0; top: 0; width: var(--w); height: var(--h); border-radius: 0; transform: translateY(calc(var(--h) + 20px)); transition: transform .55s cubic-bezier(.2,.8,.2,1); }
+  #browser.open { transform: translateY(0); }
+  #browser .titlebar { height: 34px; }
+  .url { flex: 1; margin: 0 60px 0 14px; height: 22px; border-radius: 6px; background: #151210; color: #cfc4b2; display: flex; align-items: center; padding: 0 10px; font: 12px -apple-system, 'Helvetica Neue', sans-serif; }
+  .url .lock { color: var(--dim); margin-right: 6px; }
+  #frame { width: var(--w); height: calc(var(--h) - 34px); border: 0; display: block; background: #0c0907; }
+</style>
+</head>
+<body>
+  <div class="win" id="term">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="title">~/indulgence</span></div>
+    <div class="pane-label">gate</div>
+    <div class="pane" id="gate"></div>
+    <div class="pane-label">claude · scripted by demo/record.ts</div>
+    <div class="pane" id="claude"></div>
+  </div>
+  <div class="win" id="browser">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url"><span class="lock">ⓘ</span><span id="addr"></span></div></div>
+    <iframe id="frame" title="viewer"></iframe>
+  </div>
+<script>
+const q = new URLSearchParams(location.search);
+const W = Number(q.get('w') || 1000);
+const H = Number(q.get('h') || 660);
+document.documentElement.style.setProperty('--w', `${W}px`);
+document.documentElement.style.setProperty('--h', `${H}px`);
+document.documentElement.style.setProperty('--font', W >= 1300 ? '16px' : '13px');
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
+function append(pane, html) {
+  const el = $(pane);
+  el.querySelector('.cursor')?.remove();
+  el.insertAdjacentHTML('beforeend', html);
+  el.scrollTop = el.scrollHeight;
+}
+async function type(pane, prefixHtml, text, perChar = 45) {
+  append(pane, prefixHtml);
+  for (const ch of text) {
+    append(pane, esc(ch) + '<span class="cursor"></span>');
+    await sleep(perChar + Math.random() * 30);
+  }
+  append(pane, '\n');
+}
+
+window.stage = {
+  async bootGate(port) {
+    await type('gate', '<span class="prompt">~/indulgence/gate $</span> ', 'npm start');
+    await sleep(500);
+    append('gate', '\n<span class="dim">&gt; indulgence-gate@0.1.0 start\n&gt; node dist/main.js</span>\n\n');
+    await sleep(700);
+    append('gate', `[gate] listening on 0.0.0.0:${port} as http://localhost:${port}\n`);
+    await sleep(500);
+    append('gate', '<span class="dim">ℹ️ INFO Connecting to SpacetimeDB WS...</span>\n');
+    await sleep(600);
+    append('gate', '[stdb] connected\n');
+  },
+  async typeCommand(cmd) {
+    append('claude', '<span class="gold">✻ Claude Code</span> <span class="dim">· indulgence plugin installed</span>\n\n');
+    await sleep(400);
+    await type('claude', '<span class="prompt">&gt;</span> ', cmd, 55);
+    await sleep(300);
+  },
+  async beginSpinner(intention, budget) {
+    append('claude', `\n<span class="gold">⏺</span> <b>indulgence - begin</b> <span class="dim">(MCP)</span>(intention: "${esc(intention)}", budget_tokens: ${budget})\n<span id="spin" class="dim"><span class="spinner"></span> Calling…</span>`);
+  },
+  showBegin(resultText, url) {
+    $('spin')?.remove();
+    const lines = resultText.split('\n').filter((l) => !l.startsWith('{'));
+    append('claude', `  <span class="dim">⎿</span>  ${esc(lines[0])}\n` + lines.slice(1).map((l) => `     <span class="dim">${esc(l)}</span>\n`).join(''));
+    append('claude', `\n<span class="gold">⏺</span> <span class="blue">${esc(url)}</span>\n`);
+  },
+  showSubagent(sessionId) {
+    append('claude', `\n<span class="gold">⏺</span> <b>priest</b>(session_id: ${esc(sessionId.slice(0, 10))}…, intention: …)\n  <span class="dim">⎿</span>  <span id="praylog" class="dim"><span class="spinner"></span> praying…</span>\n<span id="prayerbuf"></span>`);
+  },
+  /** One accepted prayer: the tool line, and the plugin's view of the last five lines said. */
+  prayed(r, lines) {
+    const el = $('praylog');
+    if (el) el.innerHTML = `pray <span class="dim">(MCP)</span> ✓ accepted · left ${r.left}`;
+    const buf = $('prayerbuf');
+    if (buf && lines) buf.innerHTML = lines.map((l) => `     <span class="gold">${esc(l)}</span>\n`).join('');
+  },
+  openBrowser(url) {
+    $('addr').textContent = url.replace(/^https?:\/\//, '').replace(/#.*$/, '');
+    $('frame').src = url;
+    $('browser').classList.add('open');
+  },
+  closeBrowser() {
+    $('browser').classList.remove('open');
+  },
+  finish(log) {
+    append('claude', `\n<span class="gold">⏺</span> Your votive is lit. Deo gratias.\n  Prayers: <span class="blue">${esc(log)}</span>\n\n<span class="prompt">&gt;</span> <span class="cursor"></span>`);
+  },
+};
+</script>
+</body>
+</html>

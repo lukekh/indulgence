@@ -1,0 +1,15 @@
+{
+  "description": "Keeps a local record of what your priest prays, and shows the last few lines as it prays.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__plugin_indulgence_indulgence__begin",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/prayer-log.mjs\" begin", "timeout": 10 }]
+      },
+      {
+        "matcher": "mcp__plugin_indulgence_indulgence__pray",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/prayer-log.mjs\" pray", "timeout": 10 }]
+      }
+    ]
+  }
+}

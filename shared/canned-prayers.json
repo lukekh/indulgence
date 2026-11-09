@@ -1,0 +1,41 @@
+{
+  "$comment": "Pre-1929 public-domain Latin prayers shown to strangers (prayer_tick.canned_idx mod length) and for in-session prayers.",
+  "prayers": [
+    {
+      "name": "Pater Noster",
+      "text": "Pater noster, qui es in caelis, sanctificetur nomen tuum. Adveniat regnum tuum. Fiat voluntas tua, sicut in caelo et in terra. Panem nostrum quotidianum da nobis hodie, et dimitte nobis debita nostra, sicut et nos dimittimus debitoribus nostris. Et ne nos inducas in tentationem, sed libera nos a malo. Amen."
+    },
+    {
+      "name": "Ave Maria",
+      "text": "Ave Maria, gratia plena, Dominus tecum. Benedicta tu in mulieribus, et benedictus fructus ventris tui, Iesus. Sancta Maria, Mater Dei, ora pro nobis peccatoribus, nunc et in hora mortis nostrae. Amen."
+    },
+    {
+      "name": "Gloria Patri",
+      "text": "Gloria Patri, et Filio, et Spiritui Sancto. Sicut erat in principio, et nunc, et semper, et in saecula saeculorum. Amen."
+    },
+    {
+      "name": "Confiteor",
+      "text": "Confiteor Deo omnipotenti, beatae Mariae semper Virgini, beato Michaeli Archangelo, beato Ioanni Baptistae, sanctis Apostolis Petro et Paulo, omnibus Sanctis, et vobis, fratres: quia peccavi nimis cogitatione, verbo et opere: mea culpa, mea culpa, mea maxima culpa. Ideo precor beatam Mariam semper Virginem, beatum Michaelem Archangelum, beatum Ioannem Baptistam, sanctos Apostolos Petrum et Paulum, omnes Sanctos, et vos, fratres, orare pro me ad Dominum Deum nostrum. Amen."
+    },
+    {
+      "name": "Salve Regina",
+      "text": "Salve, Regina, mater misericordiae, vita, dulcedo, et spes nostra, salve. Ad te clamamus, exsules filii Hevae. Ad te suspiramus, gementes et flentes in hac lacrimarum valle. Eia, ergo, advocata nostra, illos tuos misericordes oculos ad nos converte. Et Iesum, benedictum fructum ventris tui, nobis post hoc exsilium ostende. O clemens, O pia, O dulcis Virgo Maria."
+    },
+    {
+      "name": "Anima Christi",
+      "text": "Anima Christi, sanctifica me. Corpus Christi, salva me. Sanguis Christi, inebria me. Aqua lateris Christi, lava me. Passio Christi, conforta me. O bone Iesu, exaudi me. Intra tua vulnera absconde me. Ne permittas me separari a te. Ab hoste maligno defende me. In hora mortis meae voca me. Et iube me venire ad te, ut cum Sanctis tuis laudem te in saecula saeculorum. Amen."
+    },
+    {
+      "name": "Agnus Dei",
+      "text": "Agnus Dei, qui tollis peccata mundi, miserere nobis. Agnus Dei, qui tollis peccata mundi, miserere nobis. Agnus Dei, qui tollis peccata mundi, dona nobis pacem."
+    },
+    {
+      "name": "Kyrie",
+      "text": "Kyrie, eleison. Kyrie, eleison. Kyrie, eleison. Christe, eleison. Christe, eleison. Christe, eleison. Kyrie, eleison. Kyrie, eleison. Kyrie, eleison."
+    },
+    {
+      "name": "Requiem aeternam",
+      "text": "Requiem aeternam dona eis, Domine, et lux perpetua luceat eis. Requiescant in pace. Amen."
+    }
+  ]
+}
