@@ -18,6 +18,11 @@ import { cannedPrayer } from './canned';
 import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, type ViewerGrant } from './net';
 
 const SLOT = C.PACING_SLOT_MS;
+/**
+ * Demo builds only (demo/record.ts): shifts the thurifers' procession in time so one comes
+ * past just when the recording wants it, instead of waiting up to two minutes. Zero otherwise.
+ */
+const THURIFER_SHIFT_MS = Number(import.meta.env.VITE_DEMO_THURIFER_SHIFT_MS ?? 0) || 0;
 /** Height of a priest sprite above its feet, base px (LPC sheets are drawn at half size). */
 const HEAD = 30;
 const RETRY_FOR_MS = 120_000;
@@ -298,20 +303,21 @@ function frame() {
   }
 
   // The thurifer processes across the front of the nave, every two minutes at any one place.
-  const thurifers = thurifersBetween(t, x0, x1).map((th) => {
+  const tn = t + THURIFER_SHIFT_MS;
+  const thurifers = thurifersBetween(tn, x0, x1).map((th) => {
     const feet = project(cam, th.x, th.y);
     const pose: Pose = { x: th.x, y: th.y, dir: 'right', action: 'walk', t: t / 1000, alpha: 1 };
     drawables.push({
       depth: th.y,
       layer: LAYER.priest,
       x: th.x,
-      draw: (ctx: CanvasRenderingContext2D) => void sprites!.drawThurifer(ctx, pose, feet[0], feet[1], { swing: swing(t) }),
+      draw: (ctx: CanvasRenderingContext2D) => void sprites!.drawThurifer(ctx, pose, feet[0], feet[1], { swing: swing(tn) }),
     });
     return { ...th, feet };
   });
 
   for (const d of sortDrawables(drawables)) d.draw(bctx);
-  for (const th of thurifers) drawSmoke(bctx, cam, th.j, t);
+  for (const th of thurifers) drawSmoke(bctx, cam, th.j, tn);
 
   // --- candlelight, coloured shafts, dither ---------------------------------------------
   const lights: Light[] = fixedLights(cam, x0, x1, yMax);
@@ -324,7 +330,7 @@ function frame() {
   }
   for (const th of thurifers) {
     const [hx, hy] = thuriferHand(sprites!, th.feet[0], th.feet[1]);
-    const [bx, by] = thuribleBowl(hx, hy, swing(t));
+    const [bx, by] = thuribleBowl(hx, hy, swing(tn));
     lights.push({ x: bx, y: by, r: 18, power: 0.3 });
   }
   applyLighting(bctx, baseW, baseH, lights, AMBIENT);

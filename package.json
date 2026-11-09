@@ -7,6 +7,7 @@
     "sandbox": "npm --prefix demo run sandbox",
     "live": "npm --prefix demo run live",
     "gif": "npm --prefix demo run gif",
+    "quick": "npm --prefix demo run quick",
     "assets": "npm --prefix demo run assets",
     "test": "npm --prefix gate test && npm --prefix web test"
   }

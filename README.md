@@ -40,6 +40,7 @@ npm run install:all   # npm install in gate/, web/ and demo/
 npm run sandbox       # fresh local SpacetimeDB + module + viewer + gate, seeded with friends; prints your viewer link
 npm run live          # the scripted demo in a visible Chrome window
 npm run gif           # the scripted demo, recorded to demo/out/indulgence-demo.gif
+npm run quick         # ~25 s of the cathedral with your priest praying, for quick visual checks (about a minute)
 npm run assets        # asset sheets, rendered to demo/out/assets/*.jpg
 npm test              # gate and web unit tests
 ```

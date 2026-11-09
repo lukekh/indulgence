@@ -1,6 +1,8 @@
 // Scripted end-to-end demo of /indulgence.
 //
 //   npm run gif      record demo/out/indulgence-demo.gif (headless Chrome + ffmpeg)
+//   npm run quick    record demo/out/quick.gif: ~25 s of the cathedral with your priest
+//                    seated and praying, for checking a visual change in about a minute
 //   npm run live     play the same demo in a visible Chrome window
 //   npm run sandbox  boot the same cathedral, print a viewer link, run until Ctrl+C
 //
@@ -23,16 +25,28 @@ import { textSize } from '../web/src/text.js';
 import { nextPassAt, thurifersBetween } from '../web/src/npc.js';
 import { C, type CandleName } from '../shared/constants.js';
 
-const MODE: 'gif' | 'live' | 'sandbox' = process.argv.includes('--live') ? 'live' : process.argv.includes('--sandbox') ? 'sandbox' : 'gif';
-const HEADLESS = MODE === 'gif' || process.env.DEMO_HEADLESS === '1';
+const MODE: 'gif' | 'quick' | 'live' | 'sandbox' = process.argv.includes('--live')
+  ? 'live'
+  : process.argv.includes('--sandbox')
+    ? 'sandbox'
+    : process.argv.includes('--quick')
+      ? 'quick'
+      : 'gif';
+const HEADLESS = MODE === 'gif' || MODE === 'quick' || process.env.DEMO_HEADLESS === '1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
-const OUT = path.resolve(process.env.DEMO_OUT ?? path.join(HERE, 'out', 'indulgence-demo.gif'));
+const OUT = path.resolve(process.env.DEMO_OUT ?? path.join(HERE, 'out', MODE === 'quick' ? 'quick.gif' : 'indulgence-demo.gif'));
 const FPS = Number(process.env.DEMO_FPS ?? 7);
 /** Playback speed of the slow walks (in to the pew, out past the stand) in the GIF. */
 const FAST = Number(process.env.DEMO_DEPART_SPEED ?? 4);
 /** Real time spent watching your priest pray once it has sat down. */
-const SEATED_MS = Number(process.env.DEMO_SEATED_MS ?? 17_000);
+const SEATED_MS = Number(process.env.DEMO_SEATED_MS ?? 13_000);
+/** Length of the quick recording. */
+const QUICK_MS = Number(process.env.DEMO_QUICK_MS ?? 25_000);
+/** From opening Chrome to the cathedral appearing in the full demo (the terminal scene). */
+const OPENS_AFTER_MS = 11_000;
+/** From opening Chrome to the mouse going to the thurifer on the tour. */
+const THURIFER_HOVER_AFTER_MS = 31_000;
 // 1440 × 900 renders the cathedral at 2× (its base canvas is about 640 × 360); 1920 × 1080 gives 3×.
 const WIDTH = Number(process.env.DEMO_WIDTH ?? 1440);
 const HEIGHT = Number(process.env.DEMO_HEIGHT ?? 900);
@@ -97,8 +111,81 @@ function run(cmd: string, args: string[], opts: { cwd: string; log: string; env?
   }
 }
 
+type Box = { x: number; y: number; width: number; height: number };
+
+/** When your priest, which began walking in at `begunAt`, reaches its pew in a viewer `box` big. */
+function seatedTime(box: Box, own: Layout['own'], begunAt: number): number {
+  const vp = viewportFor(box.width, box.height);
+  const cam = cameraFor(bayCentreX(own.x), vp);
+  const entryY = Math.max(C.ENTRY_Y, visibleTiles(cam, vp).yMax + 2);
+  const bayStart = bayCentreX(own.x) - C.AISLE_CENTRE_X;
+  const side = bayStart + (own.x < bayCentreX(own.x) ? C.SIDE_AISLE_X[0]! : C.SIDE_AISLE_X[1]!);
+  const tiles = entryY - own.y + Math.abs(own.x - side);
+  return begunAt + (tiles / C.WALK_TILES_PER_S) * 1000;
+}
+
+/**
+ * How far to shift the thurifers' procession (VITE_DEMO_THURIFER_SHIFT_MS) so that one is
+ * at world x `x` at real time `at`, rather than waiting up to two minutes for one.
+ */
+function thuriferShift(x: number, at: number): number {
+  return nextPassAt(x, at) - at;
+}
+
+/** Screenshots at FPS until stopped; frames are timestamped so stretches can be sped up. */
+function startRecorder(page: Page, dir: string) {
+  fs.mkdirSync(dir, { recursive: true });
+  const frames: { t: number; file: string }[] = [];
+  let on = true;
+  const done = (async () => {
+    for (let i = 0; on; i++) {
+      const t = Date.now();
+      const file = path.join(dir, `f${String(i).padStart(5, '0')}.png`);
+      fs.writeFileSync(file, await page.screenshot({ type: 'png' }));
+      frames.push({ t, file });
+      const wait = 1000 / FPS - (Date.now() - t);
+      if (wait > 0) await sleep(wait);
+    }
+  })();
+  return {
+    frames,
+    async stop() {
+      on = false;
+      await done;
+      return frames;
+    },
+  };
+}
+
+/** Encode frames to a GIF, playing the `fast` stretches at FAST× speed. */
+function encodeGif(frames: { t: number; file: string }[], fast: [number, number][], out: string, tmp: string, log: string) {
+  say(`encoding ${frames.length} frames`);
+  const speed = (t: number) => (fast.some(([a, b]) => t >= a && t < b) ? FAST : 1);
+  const list = frames.map((f, i) => {
+    const next = frames[i + 1]?.t ?? f.t + 1000 / FPS;
+    return `file '${f.file}'\nduration ${((next - f.t) / 1000 / speed(f.t)).toFixed(4)}`;
+  });
+  list.push(`file '${frames.at(-1)!.file}'`);
+  fs.writeFileSync(path.join(tmp, 'frames.txt'), list.join('\n'));
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  run(
+    'ffmpeg',
+    [
+      '-y',
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', path.join(tmp, 'frames.txt'),
+      '-vf', `fps=${FPS},split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
+      '-loop', '0',
+      out,
+    ],
+    { cwd: tmp, log },
+  );
+  say(`wrote ${path.relative(process.cwd(), out)} (${(fs.statSync(out).size / 1e6).toFixed(1)} MB)`);
+}
+
 /** Page coordinates of things in the viewer, using the renderer's own projection. */
-function aimer(box: { x: number; y: number; width: number; height: number }, own: Layout['own']) {
+function aimer(box: Box, own: Layout['own'], shift: number) {
   const vp = viewportFor(box.width, box.height);
   const { scale, offX, offY } = vp;
   const cam = cameraFor(bayCentreX(own.x), vp);
@@ -116,7 +203,7 @@ function aimer(box: { x: number; y: number; width: number; height: number }, own
     },
     /** The thurifer nearest your seat right now, if one is in the nave near you. */
     thurifer: () => {
-      const near = thurifersBetween(Date.now(), own.x - 30, own.x + 30).sort((a, b) => Math.abs(a.x - own.x) - Math.abs(b.x - own.x))[0];
+      const near = thurifersBetween(Date.now() + shift, own.x - 30, own.x + 30).sort((a, b) => Math.abs(a.x - own.x) - Math.abs(b.x - own.x))[0];
       if (!near) return undefined;
       const [fx, fy] = project(cam, near.x + 1.5, near.y);
       return toPage(fx, fy - 20);
@@ -132,7 +219,7 @@ function aimer(box: { x: number; y: number; width: number; height: number }, own
 async function main() {
   need('spacetime', 'Install it from https://spacetimedb.com/install.');
   need('cargo', 'Install Rust (rustup); module/rust-toolchain.toml pins the version.');
-  if (MODE === 'gif') need('ffmpeg', 'Install it, e.g. `brew install ffmpeg`.');
+  if (MODE === 'gif' || MODE === 'quick') need('ffmpeg', 'Install it, e.g. `brew install ffmpeg`.');
   for (const pkg of ['gate', 'web']) {
     if (!fs.existsSync(path.join(ROOT, pkg, 'node_modules'))) throw new Error(`Run \`npm install\` in ${pkg}/ first.`);
   }
@@ -158,16 +245,19 @@ async function main() {
       env: { ...ENV, INDULGENCE_ISSUER: `http://localhost:${gatePort}`, INDULGENCE_AUDIENCE: MODULE },
     });
 
-    say('building and serving the viewer');
-    const vite = path.join(ROOT, 'web', 'node_modules', 'vite', 'bin', 'vite.js');
-    const webOut = path.join(tmp, 'web');
-    run(process.execPath, [vite, 'build', '--outDir', webOut, '--emptyOutDir', '--logLevel', 'warn'], {
-      cwd: path.join(ROOT, 'web'),
-      log,
-      env: { ...ENV, VITE_GATE_URL: `http://localhost:${gatePort}` },
-    });
-    start(process.execPath, [vite, 'preview', '--outDir', webOut, '--port', String(webPort), '--strictPort', '--host', '127.0.0.1'], { cwd: path.join(ROOT, 'web'), log });
-    await waitFor(`http://127.0.0.1:${webPort}/`, 30_000);
+    // Built once the congregation is seated, when we know where the thurifer should be.
+    const buildViewer = async (shift: number) => {
+      say('building and serving the viewer');
+      const vite = path.join(ROOT, 'web', 'node_modules', 'vite', 'bin', 'vite.js');
+      const webOut = path.join(tmp, 'web');
+      run(process.execPath, [vite, 'build', '--outDir', webOut, '--emptyOutDir', '--logLevel', 'warn'], {
+        cwd: path.join(ROOT, 'web'),
+        log,
+        env: { ...ENV, VITE_GATE_URL: `http://localhost:${gatePort}`, VITE_DEMO_THURIFER_SHIFT_MS: String(Math.round(shift)) },
+      });
+      start(process.execPath, [vite, 'preview', '--outDir', webOut, '--port', String(webPort), '--strictPort', '--host', '127.0.0.1'], { cwd: path.join(ROOT, 'web'), log });
+      await waitFor(`http://127.0.0.1:${webPort}/`, 30_000);
+    };
 
     say('starting the gate and seating the congregation');
     cathedral = await startCathedral({
@@ -181,6 +271,7 @@ async function main() {
     });
 
     if (MODE === 'sandbox') {
+      await buildViewer(0);
       const begun = await cathedral.begin(INTENTION, BUDGET);
       console.log(`\n  Your priest: ${begun.url}\n  (single-use link; ${'Ctrl+C'} departs everyone and shuts down)\n`);
       for (let i = 0; ; i++) {
@@ -191,34 +282,73 @@ async function main() {
       return;
     }
 
-    // Start so that a thurifer (one passes every two minutes) enters the view just after the
-    // cathedral opens, and only once the friends who lit votives have walked out.
-    const lead = 16_000;
-    const startAt = nextPassAt(-20, Math.max(Date.now(), cathedral.readyAt) + lead) - lead;
-    if (startAt > Date.now() + 1000) say(`waiting ${Math.round((startAt - Date.now()) / 1000)} s for the votive-lighters to leave and the thurifer to come round`);
+    const launch = async () => {
+      say(`opening Chrome (${HEADLESS ? 'headless' : 'visible'}${MODE !== 'live' ? ', recording' : ''})`);
+      browser = await chromium.launch({ channel: 'chrome', headless: HEADLESS }).catch(() => chromium.launch({ headless: HEADLESS }));
+      return browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 });
+    };
+
+    if (MODE === 'quick') {
+      // Your priest starts walking in now, while the votive-lighters walk out; the recording
+      // opens on the cathedral itself (no terminal) just before it sits down.
+      const begun = await cathedral.begin(INTENTION, BUDGET);
+      const begunAt = Date.now();
+      let stopPraying = false;
+      const praying = (async () => {
+        await sleep(1500);
+        for (let i = 0; !stopPraying; i++) if ((await cathedral!.pray(i)).done) break;
+      })();
+      const layout = await cathedral.layout();
+      const box: Box = { x: 0, y: 0, width: WIDTH, height: HEIGHT };
+      const openAt = Math.max(Date.now() + 4000, seatedTime(box, layout.own, begunAt) - 3000);
+      // A thurifer comes past your pew about ten seconds in.
+      const shift = thuriferShift(layout.own.x - 14, openAt + 9000);
+      await buildViewer(shift);
+      say(`waiting ${Math.round((openAt - Date.now()) / 1000)} s for your priest to reach its pew`);
+      await sleep(openAt - Date.now());
+      const page = await launch();
+      await page.goto(begun.url);
+      await page.locator('#view').waitFor();
+      const rec = startRecorder(page, path.join(tmp, 'frames'));
+      const recFrom = Date.now();
+      const aim = aimer(box, layout.own, shift);
+      await sleep(2500);
+      const hildegard = layout.friends.Hildegard;
+      if (hildegard) {
+        const p = aim.priest(hildegard);
+        await page.mouse.move(p.x, p.y, { steps: 12 });
+        await sleep(2000);
+      }
+      const pick = Object.keys(layout.friends).sort((a, b) => a.localeCompare(b)).indexOf('Anselm');
+      if (pick >= 0) {
+        const k = aim.keyRow(pick);
+        await page.mouse.move(k.x, k.y, { steps: 12 });
+        await page.mouse.click(k.x, k.y);
+        await sleep(1200);
+      }
+      await page.mouse.move(40, 40, { steps: 8 });
+      await sleep(Math.max(0, recFrom + QUICK_MS - Date.now()));
+      const frames = await rec.stop();
+      stopPraying = true;
+      await Promise.race([praying, sleep(1000)]);
+      encodeGif(frames, [], OUT, tmp, log);
+      return;
+    }
+
+    // Start once the friends who lit votives have walked out (by the time the terminal scene
+    // has played), with the thurifers' procession shifted so one is in the left of your bay
+    // (where your friends are seated) when the mouse goes to it on the tour.
+    const startAt = Math.max(Date.now() + 4000, cathedral.readyAt - OPENS_AFTER_MS);
+    const friendX = Object.values((await cathedral.layout()).friends)[0]?.x ?? C.AISLE_CENTRE_X;
+    const shift = thuriferShift(bayCentreX(friendX) - 12, startAt + THURIFER_HOVER_AFTER_MS);
+    await buildViewer(shift);
+    if (startAt > Date.now() + 1000) say(`waiting ${Math.round((startAt - Date.now()) / 1000)} s for the votive-lighters to leave`);
     await sleep(startAt - Date.now());
 
-    say(`opening Chrome (${HEADLESS ? 'headless' : 'visible'}${MODE === 'gif' ? ', recording' : ''})`);
-    browser = await chromium.launch({ channel: 'chrome', headless: HEADLESS }).catch(() => chromium.launch({ headless: HEADLESS }));
-    const page: Page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 });
+    const page = await launch();
     await page.goto(`${pathToFileURL(path.join(HERE, 'stage.html')).href}?w=${WIDTH}&h=${HEIGHT}`);
-
-    // ---- recorder -----------------------------------------------------------------
-    const framesDir = path.join(tmp, 'frames');
-    fs.mkdirSync(framesDir);
-    const frames: { t: number; file: string }[] = [];
     const fast: [number, number][] = [];
-    let recording = MODE === 'gif';
-    const recorder = (async () => {
-      for (let i = 0; recording; i++) {
-        const t = Date.now();
-        const file = path.join(framesDir, `f${String(i).padStart(5, '0')}.png`);
-        fs.writeFileSync(file, await page.screenshot({ type: 'png' }));
-        frames.push({ t, file });
-        const wait = 1000 / FPS - (Date.now() - t);
-        if (wait > 0) await sleep(wait);
-      }
-    })();
+    const recorder = MODE === 'gif' ? startRecorder(page, path.join(tmp, 'frames')) : undefined;
 
     // ---- the scene ------------------------------------------------------------------
     say('scene: boot the gate, run /indulgence');
@@ -254,18 +384,9 @@ async function main() {
     const layout = await cathedral.layout();
     const box = await view.boundingBox();
     // Your walk in: up the side aisle from just below the screen, then along the pew.
-    let seatedAt = begunAt + 45_000;
+    const seatedAt = box ? seatedTime(box, layout.own, begunAt) : begunAt + 45_000;
     if (box) {
-      const vp = viewportFor(box.width, box.height);
-      const cam = cameraFor(bayCentreX(layout.own.x), vp);
-      const entryY = Math.max(C.ENTRY_Y, visibleTiles(cam, vp).yMax + 2);
-      const bayStart = bayCentreX(layout.own.x) - C.AISLE_CENTRE_X;
-      const side = bayStart + (layout.own.x < bayCentreX(layout.own.x) ? C.SIDE_AISLE_X[0]! : C.SIDE_AISLE_X[1]!);
-      const tiles = entryY - layout.own.y + Math.abs(layout.own.x - side);
-      seatedAt = begunAt + (tiles / C.WALK_TILES_PER_S) * 1000;
-    }
-    if (box) {
-      const aim = aimer(box, layout.own);
+      const aim = aimer(box, layout.own, shift);
       const hover = async (p: { x: number; y: number } | undefined, ms: number) => {
         if (!p) return;
         await page.mouse.move(p.x, p.y, { steps: 18 });
@@ -273,7 +394,7 @@ async function main() {
       };
       say('scene: friends, their votives and the thurifer');
       // Names show only under the mouse...
-      await hover(layout.friends.Hildegard && aim.priest(layout.friends.Hildegard), 3000);
+      await hover(layout.friends.Hildegard && aim.priest(layout.friends.Hildegard), 2600);
       // ...or in crimson for a friend picked out in the key.
       const inKey = Object.keys(layout.friends).sort((a, b) => a.localeCompare(b));
       const pick = inKey.indexOf('Anselm');
@@ -282,9 +403,9 @@ async function main() {
         await page.mouse.click(aim.keyRow(pick).x, aim.keyRow(pick).y);
         await sleep(2600);
       }
-      await hover(layout.candles.Bede && aim.candle(layout.candles.Bede), 2700);
-      await hover(layout.candles.Clare && aim.candle(layout.candles.Clare), 2700);
-      await hover(aim.thurifer(), 3200);
+      await hover(layout.candles.Bede && aim.candle(layout.candles.Bede), 2300);
+      await hover(layout.candles.Clare && aim.candle(layout.candles.Clare), 2300);
+      await hover(aim.thurifer(), 2800);
       await hover({ x: box.x + 40, y: box.y + 40 }, 600);
 
       // The notices in the bottom left: Latin first, then English.
@@ -296,10 +417,10 @@ async function main() {
         await viewer.locator(selector).click();
         await sleep(ms);
       };
-      await notice('button[data-open="repudiationes"]', 2000);
-      await notice('button[data-lang="en"]', 1700);
+      await notice('button[data-open="repudiationes"]', 1800);
+      await notice('button[data-lang="en"]', 1500);
       await viewer.locator('[data-close]').click();
-      await notice('button[data-open="merita"]', 2000);
+      await notice('button[data-open="merita"]', 1800);
       await viewer.locator('[data-close]').click();
       await hover({ x: box.x + 40, y: box.y + 40 }, 300);
     }
@@ -323,35 +444,9 @@ async function main() {
     await sleep(800);
     await page.evaluate(() => (window as any).stage.finish());
     await sleep(2500);
-    recording = false;
-    await recorder;
+    const frames = await recorder?.stop();
     await Promise.race([praying, sleep(1000)]);
-
-    if (MODE === 'gif') {
-      say(`encoding ${frames.length} frames`);
-      const speed = (t: number) => (fast.some(([a, b]) => t >= a && t < b) ? FAST : 1);
-      const list = frames.map((f, i) => {
-        const next = frames[i + 1]?.t ?? f.t + 1000 / FPS;
-        return `file '${f.file}'\nduration ${((next - f.t) / 1000 / speed(f.t)).toFixed(4)}`;
-      });
-      list.push(`file '${frames.at(-1)!.file}'`);
-      fs.writeFileSync(path.join(tmp, 'frames.txt'), list.join('\n'));
-      fs.mkdirSync(path.dirname(OUT), { recursive: true });
-      run(
-        'ffmpeg',
-        [
-          '-y',
-          '-f', 'concat',
-          '-safe', '0',
-          '-i', path.join(tmp, 'frames.txt'),
-          '-vf', `fps=${FPS},split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
-          '-loop', '0',
-          OUT,
-        ],
-        { cwd: tmp, log },
-      );
-      say(`wrote ${path.relative(process.cwd(), OUT)} (${(fs.statSync(OUT).size / 1e6).toFixed(1)} MB)`);
-    }
+    if (frames) encodeGif(frames, fast, OUT, tmp, log);
   } finally {
     await browser?.close().catch(() => {});
     await cathedral?.stop().catch(() => {});

@@ -6,6 +6,7 @@
   "description": "Scripted end-to-end demo: boots SpacetimeDB, the module, the gate and the viewer, then plays or records a session.",
   "scripts": {
     "gif": "tsx record.ts --gif",
+    "quick": "tsx record.ts --quick",
     "live": "tsx record.ts --live",
     "sandbox": "tsx record.ts --sandbox",
     "assets": "tsx render-assets.ts",

@@ -15,7 +15,8 @@ A scripted, end-to-end run of /indulgence. Every run starts from nothing and cle
 
 ```sh
 cd demo && npm install
-npm run gif       # writes demo/out/indulgence-demo.gif (4–5 minutes)
+npm run gif       # writes demo/out/indulgence-demo.gif (about 3 minutes)
+npm run quick     # writes demo/out/quick.gif: 25 s of the cathedral with your priest praying (about 1 minute)
 npm run live      # plays the same scene in a visible Chrome window
 npm run sandbox   # leaves the cathedral running and prints your viewer link; Ctrl+C to stop
 npm run assets    # renders every asset to demo/out/assets/*.jpg (about 15 seconds)
@@ -28,7 +29,8 @@ Needs the SpacetimeDB CLI, Rust (the module is compiled for each run), Google Ch
 | `DEMO_WIDTH`, `DEMO_HEIGHT` | 1440, 900 | Stage size. 1440 × 900 draws the cathedral at 2×, 1920 × 1080 at 3× (a bigger GIF) |
 | `DEMO_FPS` | 7 | Capture rate (priests move slowly) |
 | `DEMO_DEPART_SPEED` | 4 | Playback speed of the slow walks (the rest of the walk in, and the departure) in the GIF |
-| `DEMO_SEATED_MS` | 17000 | Real time spent watching your priest recite once it has sat down |
+| `DEMO_SEATED_MS` | 13000 | Real time spent watching your priest recite once it has sat down |
+| `DEMO_QUICK_MS` | 25000 | Length of the `quick` recording |
 | `DEMO_LOGIN` | `you` | Your GitHub login in the demo (the name your friends see) |
 | `DEMO_INTENTION` | `for the soul of my cat` | The intention typed into `/indulgence` |
 | `DEMO_STRANGERS` | 18 | Size of the congregation |
@@ -36,7 +38,16 @@ Needs the SpacetimeDB CLI, Rust (the module is compiled for each run), Google Ch
 | `DEMO_HEADLESS` | | `1` runs `live` headless (for CI) |
 | `DEMO_KEEP_TMP` | | `1` keeps the run folder in `.cache/`: logs, raw frames, ffmpeg list |
 
-Two stretches play at 4× speed in the GIF: the rest of your walk to the pew after the hover tour, and the departure from leaving the pew to the closing card. Everything else is real time, including the start of the slow walk in and your priest's recital once it sits down. A run takes about 5 minutes, most of it waiting for the votive-lighters to walk out and for the thurifer to come round.
+Two stretches play at 4× speed in the GIF: the rest of your walk to the pew after the hover tour, and the departure from leaving the pew to the closing card. Everything else is real time, including the start of the slow walk in and your priest's recital once it sits down.
+
+### Why it takes a few minutes, and the shortcuts
+
+Most of a run is real time: priests walk at a solemn 1 tile per second, and the server removes a departing priest 48 s after it stands. Two waits are cut short:
+
+- **The thurifer.** It passes any spot every two minutes, as a function of the clock. The demo builds the viewer with `VITE_DEMO_THURIFER_SHIFT_MS`, which shifts the procession so one is crossing the front of your bay when the tour reaches it. Production builds leave it at zero.
+- **The votive-lighters.** Bede and Clare must have walked out before the cathedral appears, which takes about 50 s. The terminal scene plays during the last 11 s of that wait.
+
+`npm run quick` skips the terminal, the tour and the departure. Your priest starts walking in while the congregation is seated, and the recording opens on the cathedral just before it sits down. It runs about 25 s, with a friend hovered, Anselm picked out in the key and a thurifer passing, so a visual change can be checked in about a minute. `npm run assets` (15 s) covers anything that doesn't move. The output, `out/quick.gif`, is not committed.
 
 ## Asset sheets
 
