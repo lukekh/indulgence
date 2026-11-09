@@ -1,11 +1,12 @@
 // Asset sheets for review, drawn by the viewer's own code: the cathedral, the altar, the
-// pews, a votive stand and every priest. Each shows the asset as it looks in game
-// (candlelit and dithered) above the same thing raw (flat greys, before lighting and the
-// dither). render-assets.ts saves each sheet as a JPEG.
+// pews, a votive stand, the stained-glass windows and every priest. Each shows the asset as
+// it looks in game (candlelit and dithered) above the same thing raw (flat greys, before
+// lighting and the dither). render-assets.ts saves each sheet as a JPEG.
 
 import { C, seatPos, type CandleName, type VestmentName } from '../../shared/constants';
-import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Camera, type Drawable, type Viewport } from '../../web/src/view';
-import { AMBIENT, COL, GLOW_BEAM_ALPHA, GLOW_FLOOR_ALPHA, applyLighting, applyRays, candleDrawable, candleFlame, drawFixedFlames, drawFlame, drawRays, drawStatic, fixedLights, furniture, windowLightAt, GLASS, type CandleView, type Light } from '../../web/src/scene';
+import { bayCentreX, cameraFor, project, sortDrawables, unproject, viewportFor, visibleTiles, LAYER, type Camera, type Drawable, type Viewport } from '../../web/src/view';
+import { AMBIENT, COL, GLOW_BEAM_ALPHA, GLOW_FLOOR_ALPHA, applyLighting, applyRays, candleDrawable, candleFlame, drawFixedFlames, drawFlame, drawGlows, drawRays, drawStatic, fixedLights, furniture, glowsAround, windowLightAt, type CandleView, type Glow, type Light } from '../../web/src/scene';
+import { DESIGNS, GLASS, LANCET_LENGTH, rasterise, toBytes, type WindowDesign } from '../../web/src/glass';
 import { ditherFrame } from '../../web/src/dither';
 import { PriestSprites, VESTMENTS, type Side } from '../../web/src/sprites';
 import { FACE, loadFont } from '../../web/src/text';
@@ -36,7 +37,22 @@ interface People {
   rim: boolean;
 }
 
-function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean, people?: People): HTMLCanvasElement {
+/** Changes the windows of the pools of light in view (for showing one design in place). */
+type Windows = (glows: Glow[]) => Glow[];
+
+/** The window light as the viewer draws it, or with its windows changed by `windows`. */
+function windowLight(rctx: CanvasRenderingContext2D, vp: Viewport, cam: Camera, windows?: Windows): Glow[] {
+  const { baseW: w, baseH: h } = vp;
+  const { x0, x1 } = visibleTiles(cam, vp);
+  if (!windows) return drawRays(rctx, cam, x0, x1, w, h);
+  const [, yBottom] = unproject(cam, w / 2, h);
+  const glows = windows(glowsAround(cam.bay, x0, x1, yBottom));
+  rctx.clearRect(0, 0, w, h);
+  drawGlows(rctx, cam, glows);
+  return glows;
+}
+
+function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean, people?: People, windows?: Windows): HTMLCanvasElement {
   const { baseW: w, baseH: h } = vp;
   const base = canvas(w, h);
   const ctx = ctx2d(base);
@@ -63,7 +79,7 @@ function nave(vp: Viewport, cam: Camera, candles: CandleView[], raw: boolean, pe
     applyLighting(ctx, w, h, lights, AMBIENT);
     ditherFrame(ctx, w, h);
     const rays = canvas(w, h);
-    const glows = drawRays(ctx2d(rays), cam, x0, x1, w, h);
+    const glows = windowLight(ctx2d(rays), vp, cam, windows);
     applyRays(ctx, rays);
     if (people?.rim) {
       for (const f of people.figures) {
@@ -104,13 +120,23 @@ function pair(src: HTMLCanvasElement, rects: Rect[], gap = 6): HTMLCanvasElement
   return out;
 }
 
+/** Canvases side by side, a few dark pixels apart. */
+function beside(srcs: HTMLCanvasElement[], gap = 6): HTMLCanvasElement {
+  const w = srcs.reduce((n, c) => n + c.width, 0) + gap * (srcs.length - 1);
+  const out = canvas(w, Math.max(...srcs.map((c) => c.height)));
+  const g = out.getContext('2d')!;
+  g.fillStyle = BG;
+  g.fillRect(0, 0, out.width, out.height);
+  srcs.reduce((x, c) => (g.drawImage(c, x, 0), x + c.width + gap), 0);
+  return out;
+}
+
 /** The window light alone, on black, at `gain` times its real strength. */
-function lightOnly(vp: Viewport, cam: Camera, gain: number): HTMLCanvasElement {
+function lightOnly(vp: Viewport, cam: Camera, gain: number, windows?: Windows): HTMLCanvasElement {
   const { baseW: w, baseH: h } = vp;
-  const { x0, x1 } = visibleTiles(cam, vp);
   const rays = canvas(w, h);
   const rctx = ctx2d(rays);
-  drawRays(rctx, cam, x0, x1, w, h);
+  windowLight(rctx, vp, cam, windows);
   const img = rctx.getImageData(0, 0, w, h);
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -206,6 +232,52 @@ function naveSheet(title: string, subtitle: string, tiles: { x0: number; x1: num
 }
 
 // ---------------------------------------------------------------------------
+// Stained glass
+// ---------------------------------------------------------------------------
+
+/** What each window shows, for its caption. */
+const SUBJECTS: Record<string, string> = {
+  'Agnus Dei': 'the Lamb of God with the banner of the Resurrection, on a green hill; a star above',
+  Pentecost: 'the Holy Spirit as a dove, descending in gold rays on tongues of fire',
+  'A saint': 'a saint with a book, robed in blue and green, haloed, under a canopy, on red',
+  'Station II': 'the second station of the cross: Christ, bowed, takes up the cross',
+  Grisaille: 'pale glass in a lattice of leads, with a green stem through three quatrefoils',
+  'Chi-Rho': 'the monogram of Christ in a green wreath, a star above',
+  'Pelican in her piety': 'the pelican feeding her young from her own breast, above her nest',
+  'Keys of Saint Peter': 'the keys of the kingdom, crossed, one gold and one silver',
+  'Madonna and Child': 'the Virgin in a blue mantle holding the Child, both haloed',
+  'Saint George': 'his shield with its red cross, and his lance through the dragon',
+  'Annunciation lilies': 'white lilies in a gold vase',
+  Calvary: 'three crosses on a green hill, the sun and the moon above',
+  'The True Vine': 'a winding vine with leaves and clusters of grapes',
+  "Saint Catherine's wheel": 'the spiked wheel of her martyrdom, under a crown',
+  'Sacred Heart': 'the heart aflame, bound with thorns, in a glory of rays',
+};
+/** Windows per row on the sheet of designs. */
+const LANCETS_PER_ROW = 5;
+
+const LANCET_W = 64;
+const LANCET_GAP = 28;
+
+/** Every window as designed, upright and crisp, side by side. */
+function lancets(designs: WindowDesign[]): HTMLCanvasElement {
+  const h = LANCET_W * LANCET_LENGTH;
+  const c = canvas(designs.length * (LANCET_W + LANCET_GAP) - LANCET_GAP, h);
+  const g = ctx2d(c);
+  g.fillStyle = BG;
+  g.fillRect(0, 0, c.width, c.height);
+  designs.forEach((d, i) => {
+    const px = rasterise(LANCET_W, h, (x, y) => d.glass(1 - y / h, x / LANCET_W), 4);
+    const img = g.createImageData(LANCET_W, h);
+    img.data.set(toBytes(px));
+    const one = canvas(LANCET_W, h);
+    ctx2d(one).putImageData(img, 0, 0);
+    g.drawImage(one, i * (LANCET_W + LANCET_GAP), 0);
+  });
+  return c;
+}
+
+// ---------------------------------------------------------------------------
 // Priests
 // ---------------------------------------------------------------------------
 
@@ -217,7 +289,7 @@ type Figure = { caption: string; draw: (ctx: CanvasRenderingContext2D, fx: numbe
 
 /**
  * Figures on the nave floor, candlelit and dithered, with the window light on their left
- * side: none, the faint edge they have everywhere, or standing in a pool of orange glass.
+ * side: none, the faint edge they have everywhere, or standing in a pool of ruby glass.
  */
 function rimStrip(sprites: PriestSprites, figures: { caption: string; name: VestmentName | 'thurifer'; pose: Pose }[], mode: 'none' | 'faint' | 'pool'): HTMLCanvasElement {
   const c = strip(
@@ -225,16 +297,16 @@ function rimStrip(sprites: PriestSprites, figures: { caption: string; name: Vest
     true,
   );
   const g = ctx2d(c);
-  const orange = GLASS[1]!;
+  const ruby = GLASS.ruby;
   if (mode === 'pool') {
     g.save();
     g.globalCompositeOperation = 'screen';
-    g.fillStyle = `rgba(${orange.join(',')},${GLOW_FLOOR_ALPHA})`;
+    g.fillStyle = `rgba(${ruby.join(',')},${GLOW_FLOOR_ALPHA})`;
     g.fillRect(0, 0, c.width, c.height);
     g.restore();
   }
   if (mode !== 'none') {
-    figures.forEach((f, i) => sprites.litSide(g, f.name, f.pose, i * CELL_W + CELL_W / 2, FEET_Y, 'left', mode === 'pool' ? { colour: orange, strength: 1 } : undefined));
+    figures.forEach((f, i) => sprites.litSide(g, f.name, f.pose, i * CELL_W + CELL_W / 2, FEET_Y, 'left', mode === 'pool' ? { colour: ruby, strength: 1 } : undefined));
   }
   return c;
 }
@@ -307,6 +379,42 @@ async function main() {
     sheet('Window light', `Dim, diffuse pools 3–4 rows deep: two down your column of pews with 5 rows between, one in each column beside it. ${Math.round(GLOW_FLOOR_ALPHA * 100)}% opacity on the floor, ${Math.round(GLOW_BEAM_ALPHA * 100)}% in the rays.`, [
       { label: `in game (${vp.scale}×)`, src: nave(vp, cam, [], false), ...full },
       { label: `the light alone, at 5× its real opacity (${vp.scale}×)`, src: lightOnly(vp, cam, 5), ...full },
+    ]),
+  );
+
+  // The stained glass: each window as designed, then as its light lies on the floor of your
+  // bay (in the upper pool, the only one lit here), in game and on its own.
+  const { x0: vx0, x1: vx1 } = visibleTiles(cam, vp);
+  const pool = glowsAround(cam.bay, vx0, vx1, unproject(cam, vp.baseW / 2, vp.baseH)[1]).find((g) => g.bay === cam.bay)!;
+  const only = (design: WindowDesign): Windows => () => [{ ...pool, design }];
+  const [px0, py0] = project(cam, pool.x0 - 2.5, pool.y0 - 1.5);
+  const [px1, py1] = project(cam, pool.x1 + 0.5, pool.y1 + 1.5);
+  const poolCrop: Rect = { x: px0, y: py0, w: px1 - px0, h: py1 - py0 };
+  const rows: WindowDesign[][] = [];
+  for (let i = 0; i < DESIGNS.length; i += LANCETS_PER_ROW) rows.push(DESIGNS.slice(i, i + LANCETS_PER_ROW));
+  add(
+    'stained-glass',
+    sheet('The stained glass', `Each pool of window light is the image of a pointed lancet, one of ${DESIGNS.length} designs chosen by a hash of its bay and wall. On the floor it lies on its side, sill toward its window, blurred and at ${Math.round(GLOW_FLOOR_ALPHA * 100)}% opacity (see stained-glass-floor.jpg).`, rows.map((row, r) => {
+      const strip = lancets(row);
+      return {
+        label: r === 0 ? 'as designed: leads, a border of small panes, iron saddle bars (3×)' : '',
+        src: strip,
+        x: 0,
+        y: 0,
+        w: strip.width,
+        h: strip.height,
+        k: 3,
+        captions: row.map((d, i) => ({ x: i * (LANCET_W + LANCET_GAP) + LANCET_W / 2, text: d.name })),
+      };
+    })),
+  );
+  add(
+    'stained-glass-floor',
+    sheet('The stained glass on the floor', 'Each window as its light lies on the floor of your bay: in game, candlelit and dithered, and its light alone at 5× its real strength.', [
+      ...DESIGNS.map((d) => {
+        const both = beside([pair(nave(vp, cam, [], false, undefined, only(d)), [poolCrop]), pair(lightOnly(vp, cam, 5, only(d)), [poolCrop])]);
+        return { label: `${d.name}, ${SUBJECTS[d.name]}: in game, and its light alone at 5× (2×)`, src: both, x: 0, y: 0, w: both.width, h: both.height, k: 2 };
+      }),
     ]),
   );
 
@@ -396,7 +504,7 @@ async function main() {
       { label: 'the same without it, for comparison (3×)', src: nave(vp, cam, [], false, { sprites, figures: kneelers, rim: false }), ...pews },
       { label: 'close up, without window light (6×)', src: rimStrip(sprites, closeUps, 'none'), x: 0, y: 0, w: cw, h: CELL_H, k: 6, captions: caps },
       { label: 'close up, the faint edge from the windows they have everywhere (6×)', src: rimStrip(sprites, closeUps, 'faint'), x: 0, y: 0, w: cw, h: CELL_H, k: 6, captions: caps },
-      { label: 'close up, standing in a pool of orange glass light (6×)', src: rimStrip(sprites, closeUps, 'pool'), x: 0, y: 0, w: cw, h: CELL_H, k: 6, captions: caps },
+      { label: 'close up, standing in a pool of ruby glass light (6×)', src: rimStrip(sprites, closeUps, 'pool'), x: 0, y: 0, w: cw, h: CELL_H, k: 6, captions: caps },
     ]),
   );
 

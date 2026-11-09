@@ -1,6 +1,6 @@
 // Renders every asset of the viewer to JPEGs for review, using the viewer's own drawing
-// code: the cathedral, the altar, the pews, a votive stand, each vestment of priest in
-// every pose, and the thurifer.
+// code: the cathedral, the altar, the pews, a votive stand, the stained-glass windows, each
+// vestment of priest in every pose, and the thurifer.
 //
 //   npm run assets     writes demo/out/assets/*.jpg (about 15 seconds)
 //
