@@ -3,7 +3,7 @@
 
 `/indulgence` is a satirical Claude Code plugin. It spends your own model tokens on Latin prayers, which a pixel-art priest recites in a shared cathedral that goes on forever sideways. When the budget runs out or you leave, the priest lights a candle and walks out. The candle burns for about a day.
 
-![A /indulgence session: the gate boots and /indulgence runs; then, looking straight up a dark, dithered nave toward the altar, your priest walks slowly up the side aisle and along its pew to kneel near three friends while a thurifer swings incense across the front and a coloured shaft of light falls on the pews; finally it lights a candle and leaves](demo/out/indulgence-demo.gif)
+![A /indulgence session: the gate boots and /indulgence runs; then, looking straight up a dark, dithered nave toward the altar, your priest walks slowly up the side aisle and along its pew to kneel near three friends while a thurifer swings incense across the front and the blurred image of a stained-glass window lies across the pews; finally it lights a candle and leaves](demo/out/indulgence-demo.gif)
 
 Regenerate this recording with `npm run gif` (see [`demo/`](demo)). Sheets of every asset (the cathedral, altar, pews, votive stand, each priest and the thurifer, in game and raw) are in [`demo/out/assets/`](demo/out/assets); regenerate them with `npm run assets`.
 
