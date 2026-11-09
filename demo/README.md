@@ -59,6 +59,7 @@ Most of a run is real time: priests walk at a solemn 1 tile per second, and the 
 | `altar.jpg` | Altar, cross and candlesticks before the reredos |
 | `pews.jpg` | Three rows of pews between the side aisles |
 | `window-light.jpg` | The stained-glass window light around your bay, in game and on its own at 5× strength |
+| `stained-glass.jpg` | Every window design (Agnus Dei, Pentecost, a saint, Station II, grisaille), crisp and upright as designed, then each as its light lies on the floor of your bay: in game, and on its own at 5× strength |
 | `votive-stand.jpg` | The stands either side of your pews, both facing in, with tapers, votives, pillars and paschal candles, lit |
 | `window-rim.jpg` | The window light on the side of each figure: in the pews with and without it, and close up without it, with the faint edge, and in a pool of light |
 | `priest-friar.jpg`, `priest-priest.jpg`, `priest-bishop.jpg`, `priest-cardinal.jpg` | Each vestment in every pose: up the aisle, kneeling, along the pew both ways (profile), walking out, lighting a candle |
