@@ -21,6 +21,7 @@ import { startCathedral, type Cathedral, type Layout } from './scenario.js';
 import { bayCentreX, cameraFor, project, viewportFor, visibleTiles } from '../web/src/view.js';
 import { candleDrawable } from '../web/src/scene.js';
 import { keyRowCentre } from '../web/src/key.js';
+import { sentences } from '../web/src/recital.js';
 import { textSize } from '../web/src/text.js';
 import { nextPassAt, thurifersBetween } from '../web/src/npc.js';
 import { C, type CandleName } from '../shared/constants.js';
@@ -363,14 +364,21 @@ async function main() {
     const begunAt = Date.now();
     await page.evaluate(([t, u]) => (window as any).stage.showBegin(t, u), [begun.text, begun.url] as const);
     let departed = false;
+    // The plugin's hook shows the last five lines your priest said beneath the link, and
+    // keeps every prayer in a log on your machine.
+    let said: string[] = [];
     const praying = (async () => {
       await sleep(3500);
       for (let i = 0; !departed; i++) {
         const r = await cathedral!.pray(i);
-        await page.evaluate((x) => (window as any).stage.prayed(x), r).catch(() => {});
+        if (r.accepted) said = [...said, ...sentences(r.text)].slice(-5);
+        await page.evaluate(([x, l]) => (window as any).stage.prayed(x, l), [r, said] as const).catch(() => {});
         if (r.done) break;
       }
     })();
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const logPath = `~/.claude/indulgence/prayers/${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}-${begun.session_id.slice(0, 8)}.md`;
     await sleep(700);
     await page.evaluate((s) => (window as any).stage.showSubagent(s), begun.session_id);
     await sleep(700);
@@ -442,7 +450,7 @@ async function main() {
     fast.push([fastFrom, Date.now() - 5000]);
     await page.evaluate(() => (window as any).stage.closeBrowser());
     await sleep(800);
-    await page.evaluate(() => (window as any).stage.finish());
+    await page.evaluate((log) => (window as any).stage.finish(log), logPath);
     await sleep(2500);
     const frames = await recorder?.stop();
     await Promise.race([praying, sleep(1000)]);

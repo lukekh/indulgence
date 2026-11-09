@@ -173,8 +173,9 @@ export async function startCathedral(o: CathedralOptions) {
     },
     /** One `pray` call as the priest subagent would make it. */
     async pray(i: number) {
-      const res = await callTool(sessions, 'pray', { session_id: yourSession, text: YOUR_PRAYERS[i % YOUR_PRAYERS.length], tier: 'subagent' }, { account: you, signal: signal() });
-      return res.structuredContent as { done: boolean; accepted: boolean; left: number };
+      const text = YOUR_PRAYERS[i % YOUR_PRAYERS.length]!;
+      const res = await callTool(sessions, 'pray', { session_id: yourSession, text, tier: 'subagent' }, { account: you, signal: signal() });
+      return { ...(res.structuredContent as { done: boolean; accepted: boolean; left: number }), text };
     },
     async depart() {
       live.splice(live.findIndex((s) => s.id === YOU), 1);

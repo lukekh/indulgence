@@ -26,9 +26,34 @@ The first run opens GitHub sign-in in your browser. Then you choose whether your
 
 Prayers are written by a `priest` subagent that can use only the `pray` tool, and it does not see your CLAUDE.md. Prayers that look like they leak anything (paths, URLs, code-shaped words, long numbers) are rejected and not charged.
 
+## What your priest said
+
+You don't need to open the link to follow along. As each prayer is accepted, the plugin shows the last five lines your priest said beneath the link, a clause per line. It also keeps every accepted prayer in a log on your machine, and when your votive is lit Claude Code gives you its path:
+
+```
+⏺ Your votive is lit. Deo gratias.
+  Prayers: ~/.claude/indulgence/prayers/2026-11-09-1010-1a2b3c4d.md
+```
+
+This is done by the plugin's hooks (`hooks/hooks.json`, `scripts/prayer-log.mjs`), which need `node` on your PATH. The gate never sends prayer text back, so the record exists only on your machine. Set `INDULGENCE_LOG_DIR` to keep it somewhere other than `~/.claude/indulgence`.
+
+**An always-visible view (optional).** Claude Code doesn't let a plugin redraw lines in place, so the five lines appear as a new note after each prayer. For a view that updates in place, add a status line to `~/.claude/settings.json`. It shows the five lines while your priest is praying and nothing otherwise:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "find ~/.claude/indulgence/now.txt -mmin -3 -exec cat {} \\; 2>/dev/null",
+    "refreshInterval": 1
+  }
+}
+```
+
+This replaces any status line you already have.
+
 ## Privacy
 
-The service keeps the least data it needs to seat priests and burn candles. Prayer text disappears when your priest leaves. Your candle name is public while it burns.
+The service keeps the least data it needs to seat priests and burn candles. Prayer text disappears from it when your priest leaves; the plugin keeps your own copy on your machine. Your candle name is public while it burns.
 
 | Data | Why | Who can see it | Kept for |
 | --- | --- | --- | --- |
@@ -38,6 +63,7 @@ The service keeps the least data it needs to seat priests and burn candles. Pray
 | Mutual follows, stored as keyed hashes | Seating you near friends | No one; the server only | Replaced at each sign-in; deleted by `forget` |
 | Intention text | Prompt for your prayers | Only you | End of session |
 | Prayer text | Display | You; your mutuals if made by the sampling or subagent tier | Until your priest has left |
+| Your copy of your priest's prayers | Your record | Only you: it is a file on your machine, never sent anywhere | Until you delete it (`~/.claude/indulgence`) |
 | Session times, budget, spend | Pacing, vestments, candle size | Your candle's size and presence show that you visited in the last day or two | 7 days after the session ends |
 | IP address | Rate limiting | No one | 24 hours, in gate logs |
 

@@ -18,7 +18,7 @@ The design is in [`indulgence — Technical Spec.md`](indulgence%20—%20Technic
 | [`gate/`](gate) | Gate: remote MCP server, OAuth 2.1 authorization server (GitHub sign-in), OIDC issuer for SpacetimeDB JWTs, spend, pacing, disconnect detection, viewer tickets | TypeScript on Node 22, MCP SDK 1.32, `jose`, SpacetimeDB SDK |
 | [`web/`](web) | Viewer: full-screen, front-facing, Obra Dinn–style dithered Canvas 2D renderer with LPC sprites, the thurifer, field-of-view subscription, hover details, canned prayers | TypeScript, Vite, SpacetimeDB SDK |
 | [`demo/`](demo) | Scripted end-to-end demo: boots everything from scratch, then records a GIF, plays it in Chrome, or leaves a sandbox running | TypeScript, Playwright, ffmpeg |
-| [`plugin/`](plugin) | Claude Code plugin: `/indulgence` command, `priest` subagent, remote MCP registration. Markdown and JSON only | |
+| [`plugin/`](plugin) | Claude Code plugin: `/indulgence` command, `priest` subagent, remote MCP registration, and hooks that show the last five lines your priest said and keep a local log of its prayers | Markdown, JSON, one dependency-free Node script |
 | [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) | Marketplace, so the repo installs with `/plugin marketplace add lukekh/indulgence` | |
 
 ## Answers to the spec's open items

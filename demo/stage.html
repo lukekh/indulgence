@@ -97,11 +97,14 @@ window.stage = {
     append('claude', `\n<span class="gold">⏺</span> <span class="blue">${esc(url)}</span>\n`);
   },
   showSubagent(sessionId) {
-    append('claude', `\n<span class="gold">⏺</span> <b>priest</b>(session_id: ${esc(sessionId.slice(0, 10))}…, intention: …)\n  <span class="dim">⎿</span>  <span id="praylog" class="dim"><span class="spinner"></span> praying…</span>\n`);
+    append('claude', `\n<span class="gold">⏺</span> <b>priest</b>(session_id: ${esc(sessionId.slice(0, 10))}…, intention: …)\n  <span class="dim">⎿</span>  <span id="praylog" class="dim"><span class="spinner"></span> praying…</span>\n<span id="prayerbuf"></span>`);
   },
-  prayed(r) {
+  /** One accepted prayer: the tool line, and the plugin's view of the last five lines said. */
+  prayed(r, lines) {
     const el = $('praylog');
     if (el) el.innerHTML = `pray <span class="dim">(MCP)</span> ✓ accepted · left ${r.left}`;
+    const buf = $('prayerbuf');
+    if (buf && lines) buf.innerHTML = lines.map((l) => `     <span class="gold">${esc(l)}</span>\n`).join('');
   },
   openBrowser(url) {
     $('addr').textContent = url.replace(/^https?:\/\//, '').replace(/#.*$/, '');
@@ -111,8 +114,8 @@ window.stage = {
   closeBrowser() {
     $('browser').classList.remove('open');
   },
-  finish() {
-    append('claude', '\n<span class="gold">⏺</span> Your votive is lit. Deo gratias.\n\n<span class="prompt">&gt;</span> <span class="cursor"></span>');
+  finish(log) {
+    append('claude', `\n<span class="gold">⏺</span> Your votive is lit. Deo gratias.\n  Prayers: <span class="blue">${esc(log)}</span>\n\n<span class="prompt">&gt;</span> <span class="cursor"></span>`);
   },
 };
 </script>
