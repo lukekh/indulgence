@@ -118,7 +118,7 @@ How the spec's acceptance checks are covered:
 
 ## Licence
 
-MIT for the code. Third-party assets and libraries, also credited in the viewer under *Merita*:
+Made by [Luke Keating Hughes](https://github.com/lukekh). MIT for the code. Third-party assets and libraries, also credited in the viewer under *Merita*:
 
 - **Sprites:** composed with the [Universal LPC Spritesheet Character Generator](https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator) from Liberated Pixel Cup and OpenGameArt.org art. Used under OGA-BY 3.0, which every layer offers (most also offer CC-BY-SA 3.0 and GPL 3.0). Each layer's artists, licences and sources are listed in [`web/public/sprites/CREDITS.txt`](web/public/sprites/CREDITS.txt).
 - **Type:** [Grenze Gotisch](https://github.com/Omnibus-Type/Grenze-Gotisch) by Omnibus-Type, under the SIL Open Font License 1.1 ([`web/public/fonts/OFL.txt`](web/public/fonts/OFL.txt)).
