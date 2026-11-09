@@ -28,8 +28,11 @@ export class DeferredStore implements Store {
   async upsertAccount(a: AccountInput) {
     return this.s.upsertAccount(a);
   }
-  async touchAccount(ghHash: string) {
-    return this.s.touchAccount(ghHash);
+  async touchAccount(ghHash: string, grant: string, issuedAtS: number) {
+    return this.s.touchAccount(ghHash, grant, issuedAtS);
+  }
+  async revokeGrant(ghHash: string, grant: string) {
+    return this.s.revokeGrant(ghHash, grant);
   }
   async enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }) {
     return this.s.enter(a);

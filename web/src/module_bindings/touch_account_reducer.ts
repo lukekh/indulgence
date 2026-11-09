@@ -12,4 +12,6 @@ import {
 
 export default {
   ghHash: __t.string(),
+  grant: __t.string(),
+  issuedAtS: __t.u64(),
 };

@@ -23,7 +23,14 @@ export interface AccountInput {
 
 export interface Store {
   upsertAccount(a: AccountInput): Promise<void>;
-  touchAccount(ghHash: string): Promise<void>;
+  /**
+   * On every token refresh: fails with `no_account` once the account is deleted, or
+   * `revoked` if the grant (`grant`, see GateOAuthProvider.grantKey) was revoked after the
+   * refresh token was issued (`issuedAtS`, seconds).
+   */
+  touchAccount(ghHash: string, grant: string, issuedAtS: number): Promise<void>;
+  /** Revoke a grant: its refresh tokens issued until now stop working. */
+  revokeGrant(ghHash: string, grant: string): Promise<void>;
   enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }): Promise<void>;
   postPrayer(a: { sessionId: string; text: string; tokens: number; tier: TierName }): Promise<void>;
   heartbeat(sessionId: string, cancelAt?: Date): Promise<void>;

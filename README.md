@@ -53,9 +53,9 @@ SpacetimeDB caches the gate's JWKS for about 5 minutes. When the gate's key chan
 
 ```sh
 (cd module && cargo test)          # seating, stands, tiers: 14 tests, including the acceptance properties
-(cd gate && npm test)              # safety filters, sessions/pacing/disconnects, tool-result property test, full OAuth+MCP HTTP flow: 65 tests
-(cd web && npm test)               # projection and movement: 8 tests
-(cd gate && npm run test:stdb)     # 17 checks against a real SpacetimeDB (setup in the header of gate/test-integration/stdb.it.ts)
+(cd gate && npm test)              # safety filters, sessions/pacing/disconnects, tool-result property test, full OAuth+MCP HTTP flow (sign-in protections, revocation), the plugin's prayer log: 78 tests
+(cd web && npm test)               # projection, movement, recital, window light: 36 tests
+(cd gate && npm run test:stdb)     # 18 checks against a real SpacetimeDB (setup in the header of gate/test-integration/stdb.it.ts)
 ```
 
 How the spec's acceptance checks are covered:
@@ -63,11 +63,13 @@ How the spec's acceptance checks are covered:
 | Check | Where |
 | --- | --- |
 | No tool result contains user-written text | `gate/test/tool-results.test.ts`: about 900 randomized calls across all tools, with marked input in every argument |
-| A viewer JWT cannot call reducers or see others' `viewer_label`/`prayer_text` | `stdb.it.ts` checks 7, 8, 10, 11 |
+| A viewer JWT cannot call reducers or see others' `viewer_label`/`prayer_text` | `stdb.it.ts` checks 7, 8, 11, 12 |
 | Two mutuals joining one after the other share a bay; with 3+ mutuals the newcomer is within 4 tiles of one | `module/src/geometry.rs` tests and `stdb.it.ts` check 5 |
-| Killing Claude Code departs the priest within 180 s, and a candle appears | `sessions.test.ts` (silence, cancellation, `DELETE /mcp`) and `stdb.it.ts` check 14 |
+| Killing Claude Code departs the priest within 180 s, and a candle appears | `sessions.test.ts` (silence, cancellation, `DELETE /mcp`) and `stdb.it.ts` check 15 |
 | A candle expires within 5 minutes of `expires_at` | `expire_candles` runs every 5 minutes on an indexed range. Not integration-tested, because the shortest burn is 24 h |
-| After `forget`, no table holds the user's identity or hashes | `stdb.it.ts` check 15 (owner SQL over the private tables) |
+| After `forget`, no table holds the user's identity or hashes | `stdb.it.ts` check 16 (owner SQL over the private tables) |
+| Only Claude Code (or an app on the user's machine) can be issued tokens, never a client that registered itself somewhere else; every new client is named to the user before sign-in | `http-flow.test.ts`, "who may sign in" |
+| Revoked tokens stay revoked across gate restarts | `http-flow.test.ts` and `stdb.it.ts` check 9 |
 
 ## Deploying on Maincloud
 
@@ -105,7 +107,7 @@ How the spec's acceptance checks are covered:
 
 - **Per-viewer tables are views, not row-level security.** RLS isn't enforced in SpacetimeDB 2.14. `viewer_label` and `prayer_text` are now public **views** over private tables (`viewer_label_store`, `prayer_text_store`), filtered on `ctx.sender()`. The client's subscription SQL is unchanged.
 - **Module configuration.** The module reads `INDULGENCE_ISSUER` and `INDULGENCE_AUDIENCE` as SpacetimeDB 2.x publish-time environment variables. `client_connected` refuses every connection except the database owner and tokens from that issuer and audience. The gate's identity enters `gate_service` automatically when it connects with `role: "gate"`, `sub: "gate"`.
-- **Extra columns and tables.** These are `priest.candle_id`, so the client knows which candle the priest walks to; a private `candle_owner`, so `forget` can find candles without a public owner column; `owner`; and a `touch_account` reducer, which refreshes tokens only for accounts that still exist. The consent screen is triggered when `upsert_account` with no name choice fails with `consent_required`.
+- **Extra columns and tables.** These are `priest.candle_id`, so the client knows which candle the priest walks to; a private `candle_owner`, so `forget` can find candles without a public owner column; `owner`; a `touch_account` reducer, which refreshes tokens only for accounts that still exist and grants that were not revoked; and a private `revoked_grant` table with a `revoke_grant` reducer, behind the gate's `/revoke` endpoint. The consent screen is triggered when `upsert_account` with no name choice fails with `consent_required`.
 - **Seating.** Before scoring, the candidate seats narrow to those within 4 tiles of some mutual whenever any exist. With two mutuals far apart, every seat between them has the same distance sum, so the formula alone can seat you in empty space between them. With 3+ mutuals, "within 4 tiles of one of them" can only be guaranteed while such a seat is free, and the property test checks exactly that.
 - **View, rows and pace.** The view is a front-facing 3/4 projection (16 × 12 px tiles), not the spec's 2:1 isometric one. Each bay has 8 rows of pews (128 seats, soft cap 96) instead of 4, with empty pews drawn beyond them without end. The pews run continuously between the side aisles, and priests walk the side aisles; the three middle tiles of each pew have no seats. Priests walk at 1 tile/s instead of 4, so `CANDLE_LIT_AFTER_MS` is 26 s (was 8) and `PRIEST_REMOVE_AFTER_MS` is 48 s (was 20). The public `priest` row gains `entered_at`, so a viewer that connects mid-walk sees the priest finish its walk rather than jump to its pew.
 - **Done on the last prayer.** `pray` returns `done: true` on the call that exhausts the budget, rather than on the call after it, so the model doesn't write a prayer that would be thrown away. The priest still departs once that prayer's 20-second slot ends.
@@ -114,6 +116,10 @@ How the spec's acceptance checks are covered:
 - **Denylist and wordlist.** The denylist is [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) (CC BY 4.0, 27 languages), minus entries that are ordinary Latin words, such as *cum*, *regina*, *vacca* and *satan*. The Latin wordlist is the 20,000 most frequent word forms in the public-domain Clementine Vulgate ([eBible.org](https://ebible.org/Scriptures/latVUC_readaloud.zip)), plus the canned prayers. Rebuild both with `npm run build:data` in `gate/`.
 - **GitHub token.** The gate revokes the user's GitHub token (`DELETE /applications/{id}/token`) rather than just discarding it.
 - **Stateless OAuth.** Client registrations, access tokens and refresh tokens are signed, not stored, so redeploying the gate signs no one out. A refreshed refresh token keeps its original 30-day expiry, which keeps the spec's "edges at most 30 days stale". Authorization codes, consent screens, live sessions and viewer tickets are in memory. After a gate restart, live priests are departed by `reap_stale` within 5 minutes, and on SIGTERM the gate departs them at once.
+- **Who may sign in.** The gate is an OAuth proxy in front of one GitHub app, with open dynamic client registration, so it guards against the MCP "confused deputy" (a client registered by someone else riding on the user's standing GitHub approval):
+  - Clients may register only loopback `http://localhost`, `127.0.0.1` or `[::1]` redirect URIs, which is where Claude Code receives its code. Other https origins can be allowed explicitly with `GATE_ALLOWED_REDIRECT_ORIGINS`. Old client ids with other redirect URIs are refused at `/authorize` too, without redirecting.
+  - Before any sign-in by a client the browser hasn't approved, the gate shows a page naming the client (unverified) and where the access goes. The answer is a POST bound to a nonce held in a `SameSite=Strict` cookie and checked against `Sec-Fetch-Site`. An approval is remembered per client in a signed, HttpOnly cookie for 90 days.
+  - `/revoke` (RFC 7009) revokes the grant a token belongs to, meaning that account through that client. Refresh tokens are refused durably, through the module; access tokens are refused at once by the gate process and expire within an hour anyway.
 - **CSP.** The viewer's Content-Security-Policy needs `'unsafe-eval'`, because the SpacetimeDB SDK compiles its (de)serialisers with `Function()`. The generated code comes from the schema, never from data, and no database string reaches the DOM.
 
 ## Licence

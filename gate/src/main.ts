@@ -19,6 +19,7 @@ const oauth = new GateOAuthProvider({
   github: new RealGitHub(cfg.githubClientId, cfg.githubClientSecret),
   publicUrl: cfg.publicUrl,
   devSkipAgeCheck: cfg.devSkipAgeCheck,
+  allowedRedirectOrigins: cfg.allowedRedirectOrigins,
 });
 sessions.onForgotten = (ghHash) => oauth.markForgotten(ghHash);
 

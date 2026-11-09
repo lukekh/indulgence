@@ -36,6 +36,13 @@ export interface GateConfig {
   trustProxy: number;
   /** Development only: skip the GitHub account-age check. */
   devSkipAgeCheck: boolean;
+  /**
+   * https origins, besides loopback http (which Claude Code uses), that OAuth clients may
+   * register as redirect URIs (GATE_ALLOWED_REDIRECT_ORIGINS, comma-separated). Empty by
+   * default: a client that can receive codes anywhere on the internet could be used to
+   * phish sign-ins.
+   */
+  allowedRedirectOrigins: string[];
 }
 
 function required(env: NodeJS.ProcessEnv, key: string): string {
@@ -76,5 +83,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GateConfig {
     extraPublicJwks: env.GATE_EXTRA_PUBLIC_JWKS || undefined,
     trustProxy: Number(env.TRUST_PROXY ?? 0),
     devSkipAgeCheck: env.DEV_SKIP_AGE_CHECK === '1',
+    allowedRedirectOrigins: parseOrigins(env.GATE_ALLOWED_REDIRECT_ORIGINS),
   };
+}
+
+function parseOrigins(v: string | undefined): string[] {
+  return (v ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const u = new URL(s);
+      if (u.protocol !== 'https:') throw new Error(`GATE_ALLOWED_REDIRECT_ORIGINS: ${s} is not https`);
+      return u.origin;
+    });
 }

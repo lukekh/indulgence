@@ -77,6 +77,7 @@ export async function startCathedral(o: CathedralOptions) {
     signingKid: 'demo-1',
     trustProxy: 0,
     devSkipAgeCheck: true,
+    allowedRedirectOrigins: [],
   };
   const keys = await Keys.create(cfg); // ephemeral: each run uses a fresh SpacetimeDB
   const store = new DeferredStore();

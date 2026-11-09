@@ -3,6 +3,16 @@
 // Client registrations, access tokens and refresh tokens are stateless (signed), so a
 // gate restart does not log anyone out. Authorization codes and pending consent screens
 // live in memory for minutes.
+//
+// The gate is a proxy in front of one GitHub OAuth app, with open dynamic registration,
+// so it must not let a client it has never seen ride on that app's standing approval (the
+// "confused deputy" of the MCP security best practices). So:
+//   - clients may only register loopback http redirect URIs (Claude Code), or https ones
+//     on an explicit allowlist, so codes cannot be delivered to an attacker's server;
+//   - every sign-in by a client this browser has not approved first shows a gate page
+//     naming the client and where the access goes, approved with a POST that is bound to
+//     a cookie only this browser holds;
+//   - tokens can be revoked (RFC 7009): refresh tokens durably, through the module.
 
 import express, { type Response, type Router } from 'express';
 import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
@@ -15,12 +25,15 @@ import {
   InvalidClientMetadataError,
   ServerError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import { timingSafeEqual } from 'node:crypto';
-import { randomId, type Keys } from '../keys.js';
+import type { OAuthTokenRevocationRequest } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import type { Request } from 'express';
+import { randomId, type Claims, type Keys } from '../keys.js';
 import { StoreError, type LabelModeName, type Store } from '../store.js';
 import { cleanDisplayName, validLogin } from '../safety/index.js';
 import { mutualIds, type GitHubApi } from './github.js';
-import { consentPage, messagePage, PAGE_HEADERS } from './pages.js';
+import { authorizePage, consentPage, messagePage, PAGE_HEADERS } from './pages.js';
+import { clearCookie, cookieNames, readCookie, setCookie, type CookieNames } from './cookies.js';
 
 const ACCESS_TTL_S = 3600;
 const REFRESH_TTL_S = 30 * 86400;
@@ -29,6 +42,27 @@ const PENDING_TTL_MS = 15 * 60_000;
 const STATE_TTL_S = 10 * 60;
 const MIN_ACCOUNT_AGE_MS = 7 * 86400_000;
 const MAX_FOLLOWS = 5000;
+/** How long the page naming the client stays valid, and how long approvals are remembered. */
+const AUTHZ_TTL_S = 10 * 60;
+const APPROVALS_TTL_S = 90 * 86400;
+const MAX_APPROVALS = 20;
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Whether a client may have its authorization codes sent to `uri`: loopback http on any
+ * port and path (what Claude Code listens on), or an https origin on the allowlist.
+ */
+export function redirectAllowed(uri: string, allowedOrigins: readonly string[] = []): boolean {
+  let u: URL;
+  try {
+    u = new URL(uri);
+  } catch {
+    return false;
+  }
+  if (u.username || u.password || u.hash) return false;
+  if (u.protocol === 'http:' && LOOPBACK_HOSTS.has(u.hostname)) return true;
+  return u.protocol === 'https:' && allowedOrigins.includes(u.origin);
+}
 
 /** Pending authorization, carried through GitHub in the signed `state`. */
 interface Flow {
@@ -61,6 +95,8 @@ export interface OAuthOptions {
   github: GitHubApi;
   publicUrl: string;
   devSkipAgeCheck?: boolean;
+  /** https origins clients may register redirect URIs on, besides loopback http. */
+  allowedRedirectOrigins?: string[];
 }
 
 export class GateOAuthProvider implements OAuthServerProvider {
@@ -70,10 +106,20 @@ export class GateOAuthProvider implements OAuthServerProvider {
   private pending = new Map<string, { flow: Flow; draft: AccountDraft; expires: number }>();
   /** Accounts deleted with `forget`: tokens issued before this time are refused. */
   private forgottenAt = new Map<string, number>();
+  /**
+   * Grants revoked at /revoke while this process runs (seconds): refuses their access tokens
+   * at once. Refresh tokens are refused durably by the module (touch_account); access tokens
+   * expire within an hour anyway.
+   */
+  private revokedAt = new Map<string, number>();
+  private readonly allowed: readonly string[];
+  private readonly cookies: CookieNames;
 
   constructor(private readonly o: OAuthOptions) {
     this.resourceUrl = `${o.publicUrl}/mcp`;
     this.callbackUrl = `${o.publicUrl}/oauth/github/callback`;
+    this.allowed = o.allowedRedirectOrigins ?? [];
+    this.cookies = cookieNames(o.publicUrl);
   }
 
   // ---------------------------------------------------------------------------
@@ -92,6 +138,9 @@ export class GateOAuthProvider implements OAuthServerProvider {
     if (uris.length === 0 || uris.length > 5 || uris.some((u) => u.length > 512)) {
       throw new InvalidClientMetadataError('redirect_uris must list 1 to 5 URIs of at most 512 characters');
     }
+    if (uris.some((u) => !redirectAllowed(u, this.allowed))) {
+      throw new InvalidClientMetadataError('redirect_uris must be loopback http URIs (localhost, 127.0.0.1 or [::1])');
+    }
     const meta = {
       redirect_uris: uris,
       token_endpoint_auth_method: client.token_endpoint_auth_method ?? 'client_secret_post',
@@ -99,6 +148,9 @@ export class GateOAuthProvider implements OAuthServerProvider {
       response_types: client.response_types ?? ['code'],
       client_name: typeof client.client_name === 'string' ? client.client_name.slice(0, 100) : undefined,
       iat: Math.floor(Date.now() / 1000),
+      // Every registration is its own client, even with identical metadata, so approvals
+      // and revocations apply to exactly one.
+      n: randomId(9),
     };
     const body = Buffer.from(JSON.stringify(meta)).toString('base64url');
     const clientId = `ic1.${body}.${this.o.keys.hmac('client', body).slice(0, 32)}`;
@@ -133,22 +185,94 @@ export class GateOAuthProvider implements OAuthServerProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // Authorization: redirect to GitHub with a signed state
+  // Authorization: name the client, then redirect to GitHub with a signed state
   // ---------------------------------------------------------------------------
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
+    // Clients registered before redirect URIs were restricted carry their own (signed) list,
+    // so check the URI in use as well as at registration. Never redirect to a refused one.
+    if (!redirectAllowed(params.redirectUri, this.allowed)) {
+      return page(res, 400, messagePage('Application not allowed', 'This application asked for access to be sent somewhere /indulgence does not allow. Only Claude Code and other applications on this computer can sign in.'));
+    }
     if (params.resource && params.resource.href !== this.resourceUrl) {
       res.redirect(clientRedirect(params.redirectUri, { error: 'invalid_target', state: params.state }));
       return;
     }
     const flow: Flow = { cid: client.client_id, ru: params.redirectUri, cc: params.codeChallenge, st: params.state };
+    if (await this.approvedHere(res.req, client.client_id)) return this.toGitHub(res, flow);
+
+    // Ask first. The form carries the flow, bound to a nonce held only in this browser's
+    // cookie, so another site cannot submit it on the user's behalf.
+    const nonce = randomId(24);
+    const request = await this.o.keys.sign({ tt: 'authz', ...flow, nh: sha256(nonce) }, { aud: `${this.o.publicUrl}#authz`, ttlSeconds: AUTHZ_TTL_S });
+    setCookie(res, this.cookies, this.cookies.authz, nonce, { maxAgeS: AUTHZ_TTL_S, sameSite: 'Strict' });
+    page(res, 200, authorizePage(request, clientLabel(client), destination(params.redirectUri)));
+  }
+
+  private async toGitHub(res: Response, flow: Flow) {
     const state = await this.o.keys.sign({ tt: 'state', ...flow }, { aud: `${this.o.publicUrl}#state`, ttlSeconds: STATE_TTL_S });
     res.redirect(this.o.github.authorizeUrl(state, this.callbackUrl));
   }
 
-  /** Express routes for the GitHub callback and the consent form. */
+  /** The user's answer on the page naming the client. */
+  private async authorizeDecision(req: Request, res: Response) {
+    // Defence in depth on top of the cookie: browsers that send Sec-Fetch-Site must say the
+    // form came from this origin.
+    const site = req.get('sec-fetch-site');
+    if (site && site !== 'same-origin') {
+      return page(res, 403, messagePage('Not allowed', 'This request did not come from the /indulgence sign-in page. Start again from Claude Code.'));
+    }
+    let claims: Claims;
+    try {
+      claims = await this.o.keys.verify(String(req.body?.request ?? ''), 'authz', `${this.o.publicUrl}#authz`);
+    } catch {
+      return page(res, 400, messagePage('Sign-in expired', 'This page has expired. Start again from Claude Code.'));
+    }
+    const nonce = readCookie(req, this.cookies.authz);
+    clearCookie(res, this.cookies, this.cookies.authz);
+    if (!nonce || !safeEqual(sha256(nonce), String(claims.nh))) {
+      return page(res, 403, messagePage('Sign-in expired', 'This page was not opened in this browser, or has expired. Start again from Claude Code.'));
+    }
+    const flow: Flow = { cid: String(claims.cid), ru: String(claims.ru), cc: String(claims.cc), st: claims.st === undefined ? undefined : String(claims.st) };
+    if (!redirectAllowed(flow.ru, this.allowed)) {
+      return page(res, 400, messagePage('Application not allowed', 'This application is not allowed to sign in.'));
+    }
+    if (req.body?.decision !== 'allow') return res.redirect(clientRedirect(flow.ru, { error: 'access_denied', state: flow.st }));
+    await this.rememberApproval(req, res, flow.cid);
+    return this.toGitHub(res, flow);
+  }
+
+  /** Has this browser approved this client before (signed cookie)? */
+  private async approvedHere(req: Request, clientId: string): Promise<boolean> {
+    return (await this.approvals(req)).includes(this.clientTag(clientId));
+  }
+
+  private async approvals(req: Request): Promise<string[]> {
+    const raw = readCookie(req, this.cookies.clients);
+    if (!raw) return [];
+    try {
+      const claims = await this.o.keys.verify(raw, 'approved', `${this.o.publicUrl}#approved`);
+      return Array.isArray(claims.cids) ? claims.cids.filter((c): c is string => typeof c === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async rememberApproval(req: Request, res: Response, clientId: string) {
+    const tag = this.clientTag(clientId);
+    const cids = [...(await this.approvals(req)).filter((c) => c !== tag), tag].slice(-MAX_APPROVALS);
+    const token = await this.o.keys.sign({ tt: 'approved', cids }, { aud: `${this.o.publicUrl}#approved`, ttlSeconds: APPROVALS_TTL_S });
+    setCookie(res, this.cookies, this.cookies.clients, token, { maxAgeS: APPROVALS_TTL_S, sameSite: 'Lax' });
+  }
+
+  private clientTag(clientId: string): string {
+    return this.o.keys.hmac('approved-client', clientId).slice(0, 24);
+  }
+
+  /** Express routes for the page naming the client, the GitHub callback and the consent form. */
   routes(): Router {
     const r = express.Router();
+    r.post('/oauth/authorize', express.urlencoded({ extended: false, limit: '8kb' }), (req, res) => void this.authorizeDecision(req, res));
     r.get('/oauth/github/callback', (req, res) => void this.githubCallback(req.query, res));
     r.post('/oauth/consent', express.urlencoded({ extended: false, limit: '4kb' }), (req, res) => void this.consent(req.body, res));
     return r;
@@ -294,10 +418,13 @@ export class GateOAuthProvider implements OAuthServerProvider {
     }
     if (resource && resource.href !== this.resourceUrl) throw new InvalidGrantError('invalid resource');
     if (this.isForgotten(claims.sub, claims.iat)) throw new InvalidGrantError('account deleted');
+    const grant = this.grantKey(claims.sub, client.client_id);
+    if (this.isRevoked(grant, claims.iat)) throw new InvalidGrantError('token revoked');
     try {
-      await this.o.store.touchAccount(claims.sub);
+      await this.o.store.touchAccount(claims.sub, grant, claims.iat ?? 0);
     } catch (e) {
       if (e instanceof StoreError && e.code === 'no_account') throw new InvalidGrantError('account deleted');
+      if (e instanceof StoreError && e.code === 'revoked') throw new InvalidGrantError('token revoked');
       throw new ServerError('temporarily unavailable');
     }
     // The refresh token keeps its original expiry: follow edges are re-read from GitHub
@@ -324,6 +451,7 @@ export class GateOAuthProvider implements OAuthServerProvider {
     if (typeof claims.sub !== 'string' || typeof claims.vs !== 'string' || this.isForgotten(claims.sub, claims.iat)) {
       throw new InvalidTokenError('invalid access token');
     }
+    if (this.isRevoked(this.grantKey(claims.sub, String(claims.cid)), claims.iat)) throw new InvalidTokenError('token revoked');
     return {
       token,
       clientId: String(claims.cid),
@@ -332,6 +460,53 @@ export class GateOAuthProvider implements OAuthServerProvider {
       resource: new URL(this.resourceUrl),
       extra: { ghHash: claims.sub, viewerSub: claims.vs },
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Revocation (RFC 7009)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Revoke the grant a token belongs to: that account signed in through that client. Only
+   * the client the token was issued to may revoke it. Unknown or invalid tokens are not an
+   * error (RFC 7009 §2.2).
+   */
+  async revokeToken(client: OAuthClientInformationFull, request: OAuthTokenRevocationRequest): Promise<void> {
+    const claims = await this.tokenClaims(request.token, request.token_type_hint);
+    if (!claims || typeof claims.sub !== 'string' || claims.cid !== client.client_id) return;
+    const grant = this.grantKey(claims.sub, client.client_id);
+    this.revokedAt.set(grant, Math.floor(Date.now() / 1000));
+    try {
+      await this.o.store.revokeGrant(claims.sub, grant);
+    } catch {
+      throw new ServerError('temporarily unavailable');
+    }
+  }
+
+  private async tokenClaims(token: string, hint?: string): Promise<Claims | undefined> {
+    const kinds: [TokenKind, string][] = [
+      ['refresh', `${this.o.publicUrl}#refresh`],
+      ['access', this.resourceUrl],
+    ];
+    if (hint === 'access_token') kinds.reverse();
+    for (const [tt, aud] of kinds) {
+      try {
+        return await this.o.keys.verify(token, tt, aud);
+      } catch {
+        // try the other kind
+      }
+    }
+    return undefined;
+  }
+
+  /** One account signed in through one client: what revocation applies to. */
+  grantKey(ghHash: string, clientId: string): string {
+    return this.o.keys.hmac('grant', `${ghHash}\n${clientId}`).slice(0, 48);
+  }
+
+  private isRevoked(grant: string, iat: number | undefined): boolean {
+    const t = this.revokedAt.get(grant);
+    return t !== undefined && (iat ?? 0) <= t;
   }
 
   /** After `forget`, refuse tokens issued before now. */
@@ -343,6 +518,28 @@ export class GateOAuthProvider implements OAuthServerProvider {
     const t = this.forgottenAt.get(ghHash);
     return t !== undefined && (iat ?? 0) <= t;
   }
+}
+
+type TokenKind = 'access' | 'refresh';
+
+function sha256(s: string): string {
+  return createHash('sha256').update(s).digest('base64url');
+}
+
+function safeEqual(a: string, b: string): boolean {
+  return a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
+/** How the client names itself, which nobody has verified. */
+function clientLabel(client: OAuthClientInformationFull): string {
+  const name = typeof client.client_name === 'string' ? client.client_name.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim().slice(0, 80) : '';
+  return name ? `“${name}”` : 'An unnamed application';
+}
+
+/** Where the authorization code (and so the access) will be delivered. */
+function destination(redirectUri: string): string {
+  const u = new URL(redirectUri);
+  return LOOPBACK_HOSTS.has(u.hostname) ? `an application on this computer (${u.host})` : u.host;
 }
 
 function clientRedirect(redirectUri: string, params: Record<string, string | undefined>): string {

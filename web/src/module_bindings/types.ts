@@ -151,6 +151,13 @@ export const RetentionJob = __t.object("RetentionJob", {
 });
 export type RetentionJob = __Infer<typeof RetentionJob>;
 
+export const RevokedGrant = __t.object("RevokedGrant", {
+  grant: __t.string(),
+  ghHash: __t.string(),
+  revokedAt: __t.timestamp(),
+});
+export type RevokedGrant = __Infer<typeof RevokedGrant>;
+
 export const Session = __t.object("Session", {
   sessionId: __t.string(),
   identity: __t.identity(),

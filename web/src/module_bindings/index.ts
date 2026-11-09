@@ -39,6 +39,7 @@ import EnterReducer from "./enter_reducer";
 import ForgetReducer from "./forget_reducer";
 import HeartbeatReducer from "./heartbeat_reducer";
 import PostPrayerReducer from "./post_prayer_reducer";
+import RevokeGrantReducer from "./revoke_grant_reducer";
 import TouchAccountReducer from "./touch_account_reducer";
 import UpsertAccountReducer from "./upsert_account_reducer";
 
@@ -129,6 +130,7 @@ const reducersSchema = __reducers(
   __reducerSchema("forget", ForgetReducer),
   __reducerSchema("heartbeat", HeartbeatReducer),
   __reducerSchema("post_prayer", PostPrayerReducer),
+  __reducerSchema("revoke_grant", RevokeGrantReducer),
   __reducerSchema("touch_account", TouchAccountReducer),
   __reducerSchema("upsert_account", UpsertAccountReducer),
 );

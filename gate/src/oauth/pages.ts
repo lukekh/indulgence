@@ -1,4 +1,5 @@
-// Server-rendered HTML for the sign-in flow: the one-time consent screen and messages.
+// Server-rendered HTML for the sign-in flow: the page that names the application asking
+// for access, the one-time consent screen, and messages. Every interpolated value is escaped.
 
 export const DISCLAIMERS: [string, string][] = [
   ['Satire.', 'Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.'],
@@ -47,6 +48,25 @@ footer p{margin:6px 0}
 </style></head><body><main>${body}
 <footer>${DISCLAIMERS.map(([k, v]) => `<p><b>${escapeHtml(k)}</b> ${escapeHtml(v)}</p>`).join('')}</footer>
 </main></body></html>`;
+}
+
+/**
+ * Shown before every sign-in by an application this browser has not approved: who is
+ * asking (as the application describes itself, unverified) and where the access goes.
+ */
+export function authorizePage(request: string, client: string, destination: string): string {
+  return shell(
+    '/indulgence',
+    `<h1>/indulgence</h1><p class="sub">An application wants to use /indulgence as you</p>
+<div class="card"><p><b>${escapeHtml(client)}</b> (as it describes itself; not verified by /indulgence) wants to act as you in the cathedral: start and end your sessions, pray in your name, and delete your account.</p>
+<p>After you sign in with GitHub, it will receive that access at <b>${escapeHtml(destination)}</b>.</p>
+<p>Continue only if you have just run <b>/indulgence</b> or connected the indulgence server in Claude Code yourself.</p>
+<form method="post" action="/oauth/authorize">
+<input type="hidden" name="request" value="${escapeHtml(request)}">
+<button class="primary" name="decision" value="allow">Continue with GitHub</button>
+<button name="decision" value="deny">Cancel</button>
+</form></div>`,
+  );
 }
 
 export function consentPage(pendingId: string, login: string, fullName: string): string {

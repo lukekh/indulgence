@@ -1,6 +1,7 @@
 // End to end over HTTP with fakes for GitHub and SpacetimeDB: dynamic client registration,
-// PKCE authorization through GitHub and the consent screen, token exchange and refresh,
-// the MCP endpoint via the official client, viewer tokens, and forget.
+// the page naming the client, PKCE authorization through GitHub and the consent screen,
+// token exchange, refresh and revocation, the MCP endpoint via the official client,
+// viewer tokens, and forget.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import http from 'node:http';
@@ -44,6 +45,7 @@ beforeAll(async () => {
     signingKid: 'test-1',
     trustProxy: 0,
     devSkipAgeCheck: false,
+    allowedRedirectOrigins: [],
   };
   keys = await Keys.create(cfg);
   store = new FakeStore();
@@ -57,6 +59,7 @@ beforeAll(async () => {
     followers: [3, 4],
   });
   github.users.set('newbie-code', { id: 9, login: 'newbie', name: null, created_at: new Date().toISOString(), following: [], followers: [] });
+  github.users.set('bob-code', { id: 5, login: 'bob', name: 'Bob', created_at: new Date(Date.now() - 30 * DAY).toISOString(), following: [], followers: [] });
   const sessions = new SessionManager(store, cfg.siteUrl);
   const oauth = new GateOAuthProvider({ keys, store, github, publicUrl: base });
   sessions.onForgotten = (h) => oauth.markForgotten(h);
@@ -71,25 +74,67 @@ afterAll(() => {
 
 const form = (o: Record<string, string>) => new URLSearchParams(o).toString();
 
-async function register(): Promise<string> {
+async function register(redirectUris = [REDIRECT], name = 'test'): Promise<string> {
   const res = await fetch(`${base}/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ redirect_uris: [REDIRECT], token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], client_name: 'test' }),
+    body: JSON.stringify({ redirect_uris: redirectUris, token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], client_name: name }),
   });
   expect(res.status).toBe(201);
   return ((await res.json()) as { client_id: string }).client_id;
+}
+
+/** The test's browser: the gate's cookies, kept between requests. */
+const jar = new Map<string, string>();
+function keepCookies(res: Response) {
+  for (const c of res.headers.getSetCookie()) {
+    const pair = c.split(';')[0]!;
+    const i = pair.indexOf('=');
+    if (/Max-Age=0\b/.test(c)) jar.delete(pair.slice(0, i));
+    else jar.set(pair.slice(0, i), pair.slice(i + 1));
+  }
+}
+const cookies = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+
+function authorizeUrl(clientId: string, challenge: string, redirectUri = REDIRECT) {
+  const auth = new URL(`${base}/authorize`);
+  Object.entries({ response_type: 'code', client_id: clientId, redirect_uri: redirectUri, code_challenge: challenge, code_challenge_method: 'S256', state: 'st8' }).forEach(([k, v]) =>
+    auth.searchParams.set(k, v),
+  );
+  return auth;
+}
+
+/** The page naming the client: its form's signed request. */
+async function approvalPage(clientId: string, challenge: string): Promise<{ res: Response; request?: string; html: string }> {
+  const res = await fetch(authorizeUrl(clientId, challenge), { redirect: 'manual', headers: { cookie: cookies() } });
+  keepCookies(res);
+  const html = res.status === 200 ? await res.text() : '';
+  return { res, html, request: /name="request" value="([^"]+)"/.exec(html)?.[1] };
+}
+
+function decide(request: string, decision: 'allow' | 'deny', headers: Record<string, string> = { 'Sec-Fetch-Site': 'same-origin' }, cookie = cookies()) {
+  return fetch(`${base}/oauth/authorize`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', cookie, ...headers },
+    body: form({ request, decision }),
+  });
+}
+
+/** Open /authorize in the test's browser, approving the client if asked; returns the response. */
+async function authorize(clientId: string, challenge: string): Promise<Response> {
+  const page = await approvalPage(clientId, challenge);
+  if (!page.request) return page.res;
+  const res = await decide(page.request, 'allow');
+  keepCookies(res);
+  return res;
 }
 
 /** Authorise through the fake GitHub; returns the redirect back to the client. */
 async function signIn(clientId: string, githubCode: string, consent?: 'username' | 'fullname') {
   const verifier = randomBytes(32).toString('base64url');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
-  const auth = new URL(`${base}/authorize`);
-  Object.entries({ response_type: 'code', client_id: clientId, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: 'S256', state: 'st8' }).forEach(([k, v]) =>
-    auth.searchParams.set(k, v),
-  );
-  const r1 = await fetch(auth, { redirect: 'manual' });
+  const r1 = await authorize(clientId, challenge);
   expect(r1.status).toBe(302);
   const gh = new URL(r1.headers.get('location')!);
   expect(gh.origin).toBe('https://github.test');
@@ -179,10 +224,7 @@ describe('sign-in, MCP and viewer tokens', () => {
   it('refuses GitHub accounts younger than 7 days', async () => {
     const verifier = randomBytes(32).toString('base64url');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
-    const r1 = await fetch(
-      `${base}/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}&code_challenge_method=S256`,
-      { redirect: 'manual' },
-    );
+    const r1 = await authorize(clientId, challenge);
     const state = new URL(r1.headers.get('location')!).searchParams.get('state');
     const cb = await fetch(`${base}/oauth/github/callback?code=newbie-code&state=${state}`, { redirect: 'manual' });
     expect(cb.status).toBe(403);
@@ -277,5 +319,135 @@ describe('sign-in, MCP and viewer tokens', () => {
     const t = await token({ grant_type: 'refresh_token', refresh_token: refresh, client_id: clientId });
     expect(t.status).toBe(400);
     expect(t.body.error).toBe('invalid_grant');
+  });
+});
+
+describe('who may sign in (the gate is a proxy for one GitHub app)', () => {
+  const challenge = createHash('sha256').update('v'.repeat(43)).digest('base64url');
+
+  it('registers only clients that receive codes on this computer (loopback http)', async () => {
+    for (const uri of ['https://evil.example/cb', 'http://evil.example/cb', 'http://user:pw@localhost/cb', 'custom-scheme://cb']) {
+      const res = await fetch(`${base}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redirect_uris: [uri], token_endpoint_auth_method: 'none' }),
+      });
+      expect(res.status, uri).toBe(400);
+    }
+    for (const uri of ['http://127.0.0.1:5555/callback', 'http://[::1]:7/cb', 'http://localhost/cb']) expect(await register([uri])).toMatch(/^ic1\./);
+  });
+
+  it('refuses, without redirecting, clients registered before the restriction', async () => {
+    // A stateless client id minted with an outside redirect URI, as an attacker might hold.
+    const body = Buffer.from(
+      JSON.stringify({ redirect_uris: ['https://evil.example/cb'], token_endpoint_auth_method: 'none', grant_types: ['authorization_code'], response_types: ['code'], iat: 1 }),
+    ).toString('base64url');
+    const old = `ic1.${body}.${keys.hmac('client', body).slice(0, 32)}`;
+    const res = await fetch(authorizeUrl(old, challenge, 'https://evil.example/cb'), { redirect: 'manual' });
+    expect(res.status).toBe(400);
+    expect(res.headers.get('location')).toBeNull();
+    expect(await res.text()).toContain('does not allow');
+  });
+
+  it('names the client and where the access goes before sending anyone to GitHub', async () => {
+    jar.clear();
+    const id = await register([REDIRECT], 'Suspicious <b>Helper</b>');
+    const { res, html, request } = await approvalPage(id, challenge);
+    expect(res.status).toBe(200);
+    expect(html).toContain('“Suspicious &lt;b&gt;Helper&lt;/b&gt;”');
+    expect(html).toContain('not verified by /indulgence');
+    expect(html).toContain('an application on this computer (localhost:9999)');
+    expect(request).toBeTruthy();
+    const set = res.headers.getSetCookie().find((c) => c.startsWith('indulgence-authz='))!;
+    expect(set).toMatch(/HttpOnly/);
+    expect(set).toMatch(/SameSite=Strict/);
+  });
+
+  it('accepts the answer only from this browser, on this site', async () => {
+    jar.clear();
+    const id = await register();
+    const a = await approvalPage(id, challenge);
+    const cookieA = cookies();
+    // No cookie: a form posted from elsewhere.
+    expect((await decide(a.request!, 'allow', { 'Sec-Fetch-Site': 'same-origin' }, '')).status).toBe(403);
+    // The right cookie, but posted from another site.
+    expect((await decide(a.request!, 'allow', { 'Sec-Fetch-Site': 'cross-site' }, cookieA)).status).toBe(403);
+    // A page opened in another browser (its own cookie) cannot be answered with this one's.
+    jar.clear();
+    await approvalPage(id, challenge);
+    expect((await decide(a.request!, 'allow')).status).toBe(403);
+    // Tampered request.
+    expect((await decide(`${a.request!.slice(0, -4)}AAAA`, 'allow', undefined, cookieA)).status).toBe(400);
+  });
+
+  it('cancelling returns access_denied to the client', async () => {
+    jar.clear();
+    const id = await register();
+    const page = await approvalPage(id, challenge);
+    const res = await decide(page.request!, 'deny');
+    expect(res.status).toBe(302);
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.origin + loc.pathname).toBe(REDIRECT);
+    expect(loc.searchParams.get('error')).toBe('access_denied');
+    expect(loc.searchParams.get('state')).toBe('st8');
+  });
+
+  it('remembers an approved client in this browser, and only that client', async () => {
+    jar.clear();
+    const id = await register();
+    const first = await authorize(id, challenge);
+    expect(new URL(first.headers.get('location')!).origin).toBe('https://github.test');
+    const remembered = jar.get('indulgence-clients');
+    expect(remembered).toBeTruthy();
+    // The same client again goes straight to GitHub...
+    const again = await fetch(authorizeUrl(id, challenge), { redirect: 'manual', headers: { cookie: cookies() } });
+    expect(again.status).toBe(302);
+    // ...but a different client is asked about, and so is the same client in another browser.
+    expect((await approvalPage(await register([REDIRECT], 'another app'), challenge)).res.status).toBe(200);
+    jar.clear();
+    expect((await approvalPage(id, challenge)).res.status).toBe(200);
+    // A forged approval cookie counts for nothing.
+    jar.set('indulgence-clients', 'forged.jwt.value');
+    expect((await approvalPage(id, challenge)).res.status).toBe(200);
+  });
+
+  it('revokes a grant: its refresh and access tokens stop working, other clients are unaffected', async () => {
+    const mine = await register([REDIRECT], 'mine');
+    const other = await register([REDIRECT], 'other');
+    const signedIn = async (id: string) => {
+      const { res, verifier } = await signIn(id, 'bob-code');
+      const code = new URL(res.headers.get('location')!).searchParams.get('code')!;
+      const t = await token({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id: id, redirect_uri: REDIRECT });
+      expect(t.status).toBe(200);
+      return { access: t.body.access_token as string, refresh: t.body.refresh_token as string };
+    };
+    const a = await signedIn(mine);
+    const b = await signedIn(other);
+    // Tokens are issued with second precision: let the revocation fall in a later second.
+    await new Promise((r) => setTimeout(r, 1100));
+
+    const revoke = (tokenValue: string, clientId: string) =>
+      fetch(`${base}/revoke`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form({ token: tokenValue, client_id: clientId }) });
+    // Another client cannot revoke this client's token (RFC 7009: answered 200 regardless).
+    expect((await revoke(a.refresh, other)).status).toBe(200);
+    expect((await token({ grant_type: 'refresh_token', refresh_token: a.refresh, client_id: mine })).status).toBe(200);
+
+    expect((await revoke(a.refresh, mine)).status).toBe(200);
+    const refused = await token({ grant_type: 'refresh_token', refresh_token: a.refresh, client_id: mine });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toBe('invalid_grant');
+    const mcp = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${a.access}` }, body: '{}' });
+    expect(mcp.status).toBe(401);
+    // Recorded durably, so a gate restart still refuses the refresh token.
+    expect(store.revoked.size).toBe(1);
+
+    expect((await token({ grant_type: 'refresh_token', refresh_token: b.refresh, client_id: other })).status).toBe(200);
+    // Unknown tokens are not an error.
+    expect((await revoke('not-a-token', mine)).status).toBe(200);
+  });
+
+  it('advertises the revocation endpoint', async () => {
+    const meta = (await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json()) as Record<string, string>;
+    expect(meta.revocation_endpoint).toBe(`${base}/revoke`);
   });
 });

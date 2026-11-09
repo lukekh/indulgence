@@ -144,6 +144,19 @@ pub struct Account {
     pub updated_at: Timestamp,
 }
 
+/// OAuth grants revoked at the gate's `/revoke` endpoint. A grant is one account signed in
+/// through one OAuth client, identified by an HMAC the gate computes. Refresh tokens of the
+/// grant issued at or before `revoked_at` are refused; rows are dropped once every such
+/// token has expired.
+#[spacetimedb::table(accessor = revoked_grant)]
+pub struct RevokedGrant {
+    #[primary_key]
+    pub grant: String,
+    #[index(btree)]
+    pub gh_hash: String,
+    pub revoked_at: Timestamp,
+}
+
 /// Mutual follows asserted by the owner's latest sign-in, stored as HMAC hashes.
 #[spacetimedb::table(accessor = follow_edge)]
 pub struct FollowEdge {
@@ -331,6 +344,9 @@ pub struct RetentionJob {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// How long the gate's refresh tokens live (gate/src/oauth/provider.ts REFRESH_TTL_S), plus a day.
+const REFRESH_TOKEN_DAYS: i64 = 31;
 
 fn ms(n: i64) -> TimeDuration {
     TimeDuration::from_micros(n * 1000)
@@ -615,11 +631,33 @@ pub fn upsert_account(
     Ok(())
 }
 
-/// Fails with `no_account` if the account was deleted (used on token refresh).
+/// Checked on every token refresh. Fails with `no_account` if the account was deleted, and
+/// with `revoked` if this grant was revoked after the refresh token was issued
+/// (`issued_at_s`, seconds since the epoch).
 #[spacetimedb::reducer]
-pub fn touch_account(ctx: &ReducerContext, gh_hash: String) -> Result<(), String> {
+pub fn touch_account(ctx: &ReducerContext, gh_hash: String, grant: String, issued_at_s: u64) -> Result<(), String> {
     require_gate(ctx)?;
-    ctx.db.account().gh_hash().find(&gh_hash).map(|_| ()).ok_or_else(|| "no_account".into())
+    check_len(&grant, 16, 64, "grant")?;
+    ctx.db.account().gh_hash().find(&gh_hash).ok_or_else(|| "no_account".to_string())?;
+    if let Some(r) = ctx.db.revoked_grant().grant().find(&grant) {
+        let issued = Timestamp::from_micros_since_unix_epoch((issued_at_s.min(i64::MAX as u64 / 1_000_000) as i64) * 1_000_000);
+        if issued <= r.revoked_at {
+            return Err("revoked".into());
+        }
+    }
+    Ok(())
+}
+
+/// Revoke a grant (one account through one OAuth client): its refresh tokens issued until
+/// now stop working. Called by the gate's `/revoke` endpoint.
+#[spacetimedb::reducer]
+pub fn revoke_grant(ctx: &ReducerContext, gh_hash: String, grant: String) -> Result<(), String> {
+    require_gate(ctx)?;
+    check_len(&gh_hash, 16, 64, "gh_hash")?;
+    check_len(&grant, 16, 64, "grant")?;
+    ctx.db.revoked_grant().grant().delete(&grant);
+    ctx.db.revoked_grant().insert(RevokedGrant { grant, gh_hash, revoked_at: ctx.timestamp });
+    Ok(())
 }
 
 /// Seat a new priest. Any live priest of the same account departs first (takeover).
@@ -829,6 +867,7 @@ pub fn forget(ctx: &ReducerContext, gh_hash: String) -> Result<(), String> {
     }
     ctx.db.follow_edge().owner_hash().delete(&gh_hash);
     ctx.db.follow_edge().other_hash().delete(&gh_hash);
+    ctx.db.revoked_grant().gh_hash().delete(&gh_hash);
     Ok(())
 }
 
@@ -888,6 +927,13 @@ pub fn retention(ctx: &ReducerContext, _job: RetentionJob) -> Result<(), String>
         .collect();
     for id in old {
         ctx.db.session().session_id().delete(&id);
+    }
+    // A revoked grant only matters while a refresh token issued before it could still be
+    // used: refresh tokens live 30 days.
+    let lapsed = ctx.timestamp - ms(REFRESH_TOKEN_DAYS * 86_400_000);
+    let old_grants: Vec<String> = ctx.db.revoked_grant().iter().filter(|r| r.revoked_at < lapsed).map(|r| r.grant).collect();
+    for g in old_grants {
+        ctx.db.revoked_grant().grant().delete(&g);
     }
     Ok(())
 }

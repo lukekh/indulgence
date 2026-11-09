@@ -9,7 +9,7 @@ Satire. `/indulgence` spends your own model tokens on Latin prayers. A pixel-art
 /plugin install indulgence@indulgence
 ```
 
-The first run opens GitHub sign-in in your browser. Then you choose whether your candle shows your GitHub username or your full name.
+The first run opens a page in your browser that names the application asking for access (Claude Code, receiving it on this computer) before you sign in with GitHub. Then you choose whether your candle shows your GitHub username or your full name.
 
 ## Use
 

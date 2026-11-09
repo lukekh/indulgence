@@ -25,7 +25,7 @@ import {
 } from 'jose';
 import type { GateConfig } from './config.js';
 
-export type TokenType = 'access' | 'refresh' | 'state' | 'client' | 'viewer' | 'gate';
+export type TokenType = 'access' | 'refresh' | 'state' | 'client' | 'viewer' | 'gate' | 'authz' | 'approved';
 
 export interface Claims extends JWTPayload {
   tt: TokenType;

@@ -43,6 +43,7 @@ const cfg: GateConfig = {
   signingKid: 'it-1',
   trustProxy: 0,
   devSkipAgeCheck: true,
+  allowedRedirectOrigins: [],
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -185,7 +186,23 @@ await assert.rejects(
   va.conn.reducers.upsertAccount({ viewerSub: 'x', ghHash: 'f'.repeat(32), ghLogin: 'mallory', ghName: '', labelMode: { tag: 'Username' }, mutualHashes: [] }),
   /unauthorized/,
 );
+await assert.rejects(va.conn.reducers.revokeGrant({ ghHash: 'f'.repeat(32), grant: 'g'.repeat(48) }), /unauthorized/);
 ok('a viewer JWT cannot call reducers');
+
+// --- token revocation ------------------------------------------------------------------
+{
+  const bob = keys.ghHash(users.bob.id);
+  const grant = keys.hmac('grant', `${bob}\nclient-1`).slice(0, 48);
+  const nowS = Math.floor(Date.now() / 1000);
+  await store.touchAccount(bob, grant, nowS - 60);
+  await store.revokeGrant(bob, grant);
+  await assert.rejects(store.touchAccount(bob, grant, nowS - 60), /revoked/);
+  await store.touchAccount(bob, grant, nowS + 5); // a later sign-in through the same client
+  await store.touchAccount(bob, keys.hmac('grant', `${bob}\nclient-2`).slice(0, 48), nowS - 60); // another client
+  await assert.rejects(store.touchAccount('0'.repeat(32), grant, nowS), /no_account/);
+  await store.revokeGrant(keys.ghHash(users.alice.id), keys.hmac('grant', 'alice').slice(0, 48)); // cleared by forget, below
+}
+ok('revoked grants refuse refresh tokens issued before the revocation, durably, and only for that client');
 
 await assert.rejects(viewer(ai, {}, 'some-other-audience'));
 await assert.rejects(viewer(ai, { role: 'gate' }));
@@ -255,6 +272,7 @@ for (const q of [
   `SELECT * FROM follow_edge WHERE other_hash = '${h}'`,
   `SELECT * FROM session WHERE session_id = '${a.session_id}'`,
   `SELECT * FROM candle WHERE label = 'Alice Liddell'`,
+  `SELECT * FROM revoked_grant WHERE gh_hash = '${h}'`,
 ]) {
   const out = sql(q);
   assert.ok(!/alice|Alice|[0-9a-f]{32}/.test(out.split('\n').slice(2).join('\n')), `forget left rows: ${q}\n${out}`);

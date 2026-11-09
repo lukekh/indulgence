@@ -100,8 +100,12 @@ export class StdbStore implements Store {
     );
   }
 
-  touchAccount(ghHash: string) {
-    return this.call(() => this.conn.reducers.touchAccount({ ghHash }));
+  touchAccount(ghHash: string, grant: string, issuedAtS: number) {
+    return this.call(() => this.conn.reducers.touchAccount({ ghHash, grant, issuedAtS: BigInt(Math.max(0, Math.floor(issuedAtS))) }));
+  }
+
+  revokeGrant(ghHash: string, grant: string) {
+    return this.call(() => this.conn.reducers.revokeGrant({ ghHash, grant }));
   }
 
   enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }) {

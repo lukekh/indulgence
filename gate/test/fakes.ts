@@ -49,9 +49,17 @@ export class FakeStore implements Store {
     if (!prev && !a.labelMode) throw new StoreError('consent_required');
     this.accounts.set(a.ghHash, { ...a, labelMode: a.labelMode ?? prev!.labelMode });
   }
-  async touchAccount(ghHash: string) {
+  /** Grant → when it was revoked (seconds). */
+  revoked = new Map<string, number>();
+  async touchAccount(ghHash: string, grant: string, issuedAtS: number) {
     this.maybeFail();
     if (!this.accounts.has(ghHash)) throw new StoreError('no_account');
+    const at = this.revoked.get(grant);
+    if (at !== undefined && issuedAtS <= at) throw new StoreError('revoked');
+  }
+  async revokeGrant(_ghHash: string, grant: string) {
+    this.maybeFail();
+    this.revoked.set(grant, Math.floor(Date.now() / 1000));
   }
   async enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }) {
     this.maybeFail();
