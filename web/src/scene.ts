@@ -7,7 +7,7 @@
 import { C, type CandleName } from '../../shared/constants';
 import { LAYER, project, standFacesLeft, unproject, TH, TW, type Camera, type Drawable } from './view';
 import { slotPoint } from './motion';
-import { blur, designFor, dominantGlass, lancet, lightThrough, rasterise, toBytes, LANCET_LENGTH, type Rgb, type WindowDesign } from './glass';
+import { blur, saturate, designFor, dominantGlass, lancet, lightThrough, rasterise, toBytes, LANCET_LENGTH, type Rgb, type WindowDesign } from './glass';
 
 const BAY_W = C.BAY_W;
 
@@ -317,7 +317,7 @@ export function applyLighting(ctx: CanvasRenderingContext2D, width: number, heig
 export const GLOW_ROWS = 3.5;
 export const GLOW_GAP_ROWS = 5;
 /** Opacity of the light where it lies on the floor, and of its rays, laid over the frame. */
-export const GLOW_FLOOR_ALPHA = 0.14;
+export const GLOW_FLOOR_ALPHA = 0.18;
 export const GLOW_BEAM_ALPHA = 0.03;
 /** How high the windows are above the floor, base px, and how far the rays lean toward them. */
 const WINDOW_HEIGHT_PX = 260;
@@ -329,8 +329,10 @@ const NAVE_INSET = 0.6;
  * three box blurs of this radius, in those pixels) and scaled up smoothly, so the picture in
  * the glass is only a soft suggestion on the floor.
  */
-const POOL_PX = 2;
-const POOL_BLUR = 2;
+const POOL_PX = 3;
+const POOL_BLUR = 4;
+/** How much a blurred pool's colours are pushed apart again (1 = as blurred). */
+const POOL_SATURATION = 1.8;
 /** Room round the window's image for the blur to spread into, in low-resolution pixels. */
 const POOL_PAD = 3 * POOL_BLUR + 1;
 /** Half the width of the soft edge of a pool, in window widths (its strength for windowLightAt). */
@@ -436,6 +438,7 @@ function poolImage(g: Glow, w: number, h: number): HTMLCanvasElement {
     return g.design.glass(g.fromLeft ? bx / w : 1 - bx / w, ((j - POOL_PAD) * POOL_PX) / h);
   });
   blur(px, lw, lh, POOL_BLUR);
+  saturate(px, POOL_SATURATION);
   const c = document.createElement('canvas');
   c.width = lw;
   c.height = lh;

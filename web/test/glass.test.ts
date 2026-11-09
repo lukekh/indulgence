@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blur, designFor, dominantGlass, inLancet, lightThrough, rasterise, DESIGNS, GLASS, type Rgb } from '../src/glass';
+import { blur, designFor, dominantGlass, inLancet, lightThrough, rasterise, saturate, DESIGNS, GLASS, type Rgb } from '../src/glass';
 
 /** Samples of a design on a grid over its window, (u, v) → glass. */
 function samples(rows = 180, cols = 60): { u: number; v: number }[] {
@@ -47,20 +47,23 @@ describe('the window designs', () => {
     }
   });
 
-  it('are made of medieval glass, mostly cobalt blue and ruby', () => {
+  it('are made of medieval glass: mostly reds, oranges and greens, with blue as an accent', () => {
     const count = new Map<Rgb, number>();
+    let total = 0;
     for (const d of DESIGNS) {
       for (const { u, v } of samples()) {
         const c = d.glass(u, v);
         if (!c) continue;
         expect(palette).toContain(c);
         count.set(c, (count.get(c) ?? 0) + 1);
+        total++;
       }
     }
-    const share = (c: Rgb) => count.get(c) ?? 0;
-    const blue = share(GLASS.cobalt) + share(GLASS.azure);
-    for (const c of palette) if (c !== GLASS.cobalt && c !== GLASS.azure) expect(blue).toBeGreaterThan(share(c));
-    for (const c of palette) if (c !== GLASS.cobalt && c !== GLASS.azure && c !== GLASS.ruby) expect(share(GLASS.ruby)).toBeGreaterThan(share(c));
+    const share = (...cs: Rgb[]) => cs.reduce((n, c) => n + (count.get(c) ?? 0), 0) / total;
+    expect(share(GLASS.ruby, GLASS.amber, GLASS.gold)).toBeGreaterThan(0.45);
+    expect(share(GLASS.green, GLASS.leaf)).toBeGreaterThan(0.2);
+    expect(share(GLASS.cobalt, GLASS.azure)).toBeLessThan(0.08);
+    for (const c of [GLASS.ruby, GLASS.amber, GLASS.green]) expect(share(c)).toBeGreaterThan(share(GLASS.white));
   });
 
   it('each look different', () => {
@@ -101,5 +104,25 @@ describe('drawing the light', () => {
     total.forEach((t, c) => expect(t).toBeCloseTo([0.5, 0.25, 1, 1][c]!, 4));
     expect(px[(10 * w + 10) * 4 + 3]).toBeLessThan(0.2);
     expect(px[(10 * w + 14) * 4 + 3]).toBeGreaterThan(0);
+  });
+});
+
+describe('saturate', () => {
+  it('pushes a muddy colour back toward its hue, keeping its brightness and coverage', () => {
+    // Half-covered pixel of a dull orange, premultiplied.
+    const px = new Float32Array([0.6 * 0.5, 0.45 * 0.5, 0.35 * 0.5, 0.5]);
+    const lum = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b;
+    const before = lum(0.6, 0.45, 0.35);
+    saturate(px, 1.8);
+    const [r, g, b, a] = [px[0]! / px[3]!, px[1]! / px[3]!, px[2]! / px[3]!, px[3]!];
+    expect(a).toBe(0.5);
+    expect(lum(r, g, b)).toBeCloseTo(before, 5);
+    expect(r - b).toBeGreaterThan(0.6 - 0.35);
+  });
+
+  it('leaves grey and empty pixels alone', () => {
+    const px = new Float32Array([0.3, 0.3, 0.3, 0.6, 0, 0, 0, 0]);
+    saturate(px, 2);
+    expect(Array.from(px)).toEqual(Array.from(new Float32Array([0.3, 0.3, 0.3, 0.6, 0, 0, 0, 0])));
   });
 });

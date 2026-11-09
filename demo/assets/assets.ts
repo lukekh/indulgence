@@ -242,7 +242,19 @@ const SUBJECTS: Record<string, string> = {
   'A saint': 'a saint with a book, robed in blue and green, haloed, under a canopy, on red',
   'Station II': 'the second station of the cross: Christ, bowed, takes up the cross',
   Grisaille: 'pale glass in a lattice of leads, with a green stem through three quatrefoils',
+  'Chi-Rho': 'the monogram of Christ in a green wreath, a star above',
+  'Pelican in her piety': 'the pelican feeding her young from her own breast, above her nest',
+  'Keys of Saint Peter': 'the keys of the kingdom, crossed, one gold and one silver',
+  'Madonna and Child': 'the Virgin in a blue mantle holding the Child, both haloed',
+  'Saint George': 'his shield with its red cross, and his lance through the dragon',
+  'Annunciation lilies': 'white lilies in a gold vase',
+  Calvary: 'three crosses on a green hill, the sun and the moon above',
+  'The True Vine': 'a winding vine with leaves and clusters of grapes',
+  "Saint Catherine's wheel": 'the spiked wheel of her martyrdom, under a crown',
+  'Sacred Heart': 'the heart aflame, bound with thorns, in a glory of rays',
 };
+/** Windows per row on the sheet of designs. */
+const LANCETS_PER_ROW = 5;
 
 const LANCET_W = 64;
 const LANCET_GAP = 28;
@@ -378,20 +390,27 @@ async function main() {
   const [px0, py0] = project(cam, pool.x0 - 2.5, pool.y0 - 1.5);
   const [px1, py1] = project(cam, pool.x1 + 0.5, pool.y1 + 1.5);
   const poolCrop: Rect = { x: px0, y: py0, w: px1 - px0, h: py1 - py0 };
-  const glassStrip = lancets(DESIGNS);
+  const rows: WindowDesign[][] = [];
+  for (let i = 0; i < DESIGNS.length; i += LANCETS_PER_ROW) rows.push(DESIGNS.slice(i, i + LANCETS_PER_ROW));
   add(
     'stained-glass',
-    sheet('The stained glass', `Each pool of window light is the image of a pointed lancet, one of ${DESIGNS.length} designs chosen by a hash of its bay and wall. On the floor it lies on its side, sill toward its window, blurred and at ${Math.round(GLOW_FLOOR_ALPHA * 100)}% opacity.`, [
-      {
-        label: 'as designed: leads, a border of small panes, iron saddle bars (3×)',
-        src: glassStrip,
+    sheet('The stained glass', `Each pool of window light is the image of a pointed lancet, one of ${DESIGNS.length} designs chosen by a hash of its bay and wall. On the floor it lies on its side, sill toward its window, blurred and at ${Math.round(GLOW_FLOOR_ALPHA * 100)}% opacity (see stained-glass-floor.jpg).`, rows.map((row, r) => {
+      const strip = lancets(row);
+      return {
+        label: r === 0 ? 'as designed: leads, a border of small panes, iron saddle bars (3×)' : '',
+        src: strip,
         x: 0,
         y: 0,
-        w: glassStrip.width,
-        h: glassStrip.height,
+        w: strip.width,
+        h: strip.height,
         k: 3,
-        captions: DESIGNS.map((d, i) => ({ x: i * (LANCET_W + LANCET_GAP) + LANCET_W / 2, text: d.name })),
-      },
+        captions: row.map((d, i) => ({ x: i * (LANCET_W + LANCET_GAP) + LANCET_W / 2, text: d.name })),
+      };
+    })),
+  );
+  add(
+    'stained-glass-floor',
+    sheet('The stained glass on the floor', 'Each window as its light lies on the floor of your bay: in game, candlelit and dithered, and its light alone at 5× its real strength.', [
       ...DESIGNS.map((d) => {
         const both = beside([pair(nave(vp, cam, [], false, undefined, only(d)), [poolCrop]), pair(lightOnly(vp, cam, 5, only(d)), [poolCrop])]);
         return { label: `${d.name}, ${SUBJECTS[d.name]}: in game, and its light alone at 5× (2×)`, src: both, x: 0, y: 0, w: both.width, h: both.height, k: 2 };

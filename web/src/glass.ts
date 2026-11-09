@@ -11,16 +11,19 @@
 export type Rgb = [number, number, number];
 
 /**
- * Medieval glass, as light through it: deep cobalt and ruby above all, with gold and amber,
- * green, a paler blue, white, a little purple, and a brown for wood.
+ * Medieval glass, as light through it: ruby, amber and green above all, with gold, a
+ * yellow-green, white, cobalt and azure as accents, a little purple, and a brown for wood.
+ * Grounds pair neighbouring hues (ruby with amber, green with leaf, amber with gold), so the
+ * colour stays strong when the floor's blur mixes them, rather than going to brown.
  */
 export const GLASS = {
   cobalt: [44, 84, 220] as Rgb,
   azure: [86, 136, 238] as Rgb,
-  ruby: [214, 38, 54] as Rgb,
-  gold: [244, 188, 66] as Rgb,
-  amber: [240, 126, 38] as Rgb,
-  green: [56, 158, 86] as Rgb,
+  ruby: [222, 40, 48] as Rgb,
+  gold: [246, 192, 58] as Rgb,
+  amber: [247, 130, 32] as Rgb,
+  green: [48, 168, 78] as Rgb,
+  leaf: [134, 198, 58] as Rgb,
   white: [232, 230, 206] as Rgb,
   purple: [134, 64, 166] as Rgb,
   brown: [154, 96, 48] as Rgb,
@@ -201,16 +204,18 @@ function lancetWindow(name: string, border: [Rgb, Rgb], ground: Field, pieces: P
 }
 
 const G = GLASS;
-const blueGround = mosaic(G.cobalt, G.azure, 0.17, 0.22);
+const redGround = mosaic(G.ruby, G.amber, 0.17, 0.3);
+const greenGround = mosaic(G.green, G.leaf, 0.17, 0.32);
+const amberGround = mosaic(G.amber, G.gold, 0.17, 0.3);
 
 /** The Lamb of God with a halo and a banner of the Resurrection, on a green hill; a star above. */
-const agnusDei = lancetWindow('Agnus Dei', [G.ruby, G.gold], blueGround, [
+const agnusDei = lancetWindow('Agnus Dei', [G.green, G.gold], redGround, [
   { shape: circle(0, -0.55, 1.05), colour: G.green },
   { shape: circle(-0.21, 0.94, 0.13), colour: G.gold },
   { shape: bar(-0.09, 0.62, 0.03, 1.66, 0.028), colour: G.gold },
   { shape: bar(-0.04, 1.6, 0.1, 1.6, 0.026), colour: G.gold },
-  { shape: cut(box(0.17, 1.37, 0.14, 0.11), polygon([[0.33, 1.25], [0.33, 1.49], [0.22, 1.37]])), colour: G.ruby },
-  { shape: union(box(0.12, 1.37, 0.03, 0.085), box(0.12, 1.37, 0.075, 0.03)), colour: G.gold },
+  { shape: cut(box(0.17, 1.37, 0.14, 0.11), polygon([[0.33, 1.25], [0.33, 1.49], [0.22, 1.37]])), colour: G.white },
+  { shape: union(box(0.12, 1.37, 0.03, 0.085), box(0.12, 1.37, 0.075, 0.03)), colour: G.ruby },
   {
     shape: union(
       ellipse(0.03, 0.73, 0.23, 0.13),
@@ -224,12 +229,12 @@ const agnusDei = lancetWindow('Agnus Dei', [G.ruby, G.gold], blueGround, [
     ),
     colour: G.white,
   },
-  { shape: circle(0, 2.3, 0.25), colour: G.ruby },
+  { shape: circle(0, 2.3, 0.25), colour: G.green },
   { shape: union(box(0, 2.3, 0.11, 0.11), box(0, 2.3, 0.11, 0.11, Math.PI / 4)), colour: G.gold },
 ]);
 
 /** The Holy Spirit as a dove descending in gold rays onto a great tongue of fire, with two small ones below. */
-const pentecost = lancetWindow('Pentecost', [G.gold, G.green], blueGround, [
+const pentecost = lancetWindow('Pentecost', [G.ruby, G.amber], greenGround, [
   { shape: box(0, 0.2, 0.5, 0.11), colour: G.ruby },
   { shape: union(...[-0.26, -0.13, 0, 0.13, 0.26].map((dx) => bar(0, 2.2, dx, 1.55, 0.026))), colour: G.gold },
   { shape: flame(0.02, 1.05, 0.2, 0.78, 0.07), colour: G.ruby },
@@ -251,7 +256,7 @@ const pentecost = lancetWindow('Pentecost', [G.gold, G.green], blueGround, [
 ]);
 
 /** A saint in a blue robe and green mantle, holding a gold book, haloed, under a canopy, on red. */
-const saint = lancetWindow('A saint', [G.cobalt, G.gold], mosaic(G.ruby, G.purple, 0.17, 0.15), [
+const saint = lancetWindow('A saint', [G.green, G.gold], redGround, [
   { shape: union(box(-0.31, 1.12, 0.032, 0.82), box(0.31, 1.12, 0.032, 0.82)), colour: G.white },
   { shape: cut(box(0, 2.5, 0.5, 0.55), pointed(1.8, 1.95, 0.27, 0.36)), colour: G.white },
   { shape: polygon([[-0.3, 2.36], [0.3, 2.36], [0, 2.8]]), colour: G.gold },
@@ -267,7 +272,7 @@ const saint = lancetWindow('A saint', [G.cobalt, G.gold], mosaic(G.ruby, G.purpl
 ]);
 
 /** The second station of the cross: Christ, bowed, takes up the cross; its numeral in a roundel above. */
-const station = lancetWindow('Station II', [G.ruby, G.white], blueGround, [
+const station = lancetWindow('Station II', [G.ruby, G.green], amberGround, [
   { shape: circle(-0.2, -0.9, 1.25), colour: G.green },
   { shape: polygon([[-0.24, 0.34], [0.16, 0.3], [0.02, 1.16], [-0.2, 1.24]]), colour: G.purple },
   { shape: circle(-0.25, 1.22, 0.145), colour: G.gold },
@@ -276,17 +281,17 @@ const station = lancetWindow('Station II', [G.ruby, G.white], blueGround, [
   { shape: bar(0.32, 0.28, -0.25, 1.75, 0.045), colour: G.brown },
   { shape: bar(-0.34, 1.43, 0.03, 1.57, 0.04), colour: G.brown },
   { shape: circle(-0.03, 1.02, 0.045), colour: G.white },
-  { shape: circle(0, 2.3, 0.26), colour: G.gold },
+  { shape: circle(0, 2.3, 0.26), colour: G.ruby },
   { shape: circle(0, 2.3, 0.2), colour: G.white },
   { shape: union(box(-0.055, 2.3, 0.03, 0.11), box(0.055, 2.3, 0.03, 0.11), box(0, 2.42, 0.11, 0.028), box(0, 2.18, 0.11, 0.028)), colour: G.ruby },
 ]);
 
 /** Grisaille: pale glass in a lattice of leads, with a green stem through three coloured quatrefoils. */
-const grisaille = lancetWindow('Grisaille', [G.ruby, G.cobalt], mosaic(G.white, G.white, 0.2, 0), [
+const grisaille = lancetWindow('Grisaille', [G.ruby, G.amber], mosaic(G.white, G.gold, 0.2, 0.25), [
   { shape: box(0, 1.5, 0.036, 1.5), colour: G.green },
   ...([
     [0.62, G.ruby, G.gold],
-    [1.38, G.cobalt, G.ruby],
+    [1.38, G.green, G.ruby],
     [2.14, G.ruby, G.gold],
   ] as [number, Rgb, Rgb][]).flatMap(([y, fill, centre]) => [
     { shape: quatrefoil(0, y, 0.14), colour: G.gold },
@@ -296,8 +301,183 @@ const grisaille = lancetWindow('Grisaille', [G.ruby, G.cobalt], mosaic(G.white, 
   { shape: circle(0, 2.62, 0.075), colour: G.gold },
 ]);
 
+const goldGround = mosaic(G.gold, G.amber, 0.17, 0.28);
+const leafGround = mosaic(G.leaf, G.green, 0.17, 0.35);
+
+/** A lily: three white petals opening upward round a gold stamen. */
+const lily = (cx: number, cy: number): Piece[] => [
+  { shape: union(ellipse(cx, cy + 0.02, 0.035, 0.1), ellipse(cx - 0.06, cy, 0.03, 0.09, 0.55), ellipse(cx + 0.06, cy, 0.03, 0.09, -0.55)), colour: G.white },
+  { shape: circle(cx, cy - 0.05, 0.022), colour: G.gold },
+];
+
+/** A cluster of grapes hanging from (cx, cy). */
+const grapes = (cx: number, cy: number, colour: Rgb): Piece => ({
+  shape: union(
+    ...[[0, 0], [-0.05, -0.02], [0.05, -0.02], [-0.025, -0.07], [0.025, -0.07], [0, -0.12]].map(([dx, dy]) => circle(cx + dx!, cy + dy!, 0.033)),
+  ),
+  colour,
+});
+
+/** The Chi-Rho, the monogram of Christ, in a green wreath; a gold star above. */
+const chiRho = lancetWindow('Chi-Rho', [G.green, G.gold], redGround, [
+  { shape: circle(0, -0.7, 1.0), colour: G.green },
+  { shape: cut(circle(0, 1.45, 0.34), circle(0, 1.45, 0.26)), colour: G.green },
+  { shape: union(bar(-0.15, 1.27, 0.15, 1.63, 0.035), bar(-0.15, 1.63, 0.15, 1.27, 0.035)), colour: G.gold },
+  { shape: union(bar(0, 1.15, 0, 1.78, 0.035), cut(circle(0.07, 1.7, 0.095), circle(0.07, 1.7, 0.045))), colour: G.gold },
+  { shape: union(box(0, 2.35, 0.13, 0.13, Math.PI / 4), box(0, 2.35, 0.13, 0.13)), colour: G.gold },
+  { shape: circle(0, 2.35, 0.06), colour: G.ruby },
+]);
+
+/** The pelican in her piety, feeding her young from her own breast, above her nest. */
+const pelican = lancetWindow('Pelican in her piety', [G.ruby, G.amber], greenGround, [
+  { shape: ellipse(0, 0.66, 0.3, 0.11), colour: G.gold },
+  { shape: union(circle(-0.15, 0.82, 0.055), circle(0, 0.84, 0.055), circle(0.15, 0.82, 0.055)), colour: G.white },
+  { shape: union(ellipse(-0.2, 1.42, 0.2, 0.075, 0.6), ellipse(0.22, 1.42, 0.2, 0.075, -0.6)), colour: G.white },
+  { shape: union(ellipse(0.02, 1.25, 0.18, 0.26, -0.15), bar(0.08, 1.45, -0.02, 1.7, 0.045), circle(-0.05, 1.74, 0.07)), colour: G.white },
+  { shape: bar(-0.07, 1.72, -0.02, 1.4, 0.022), colour: G.gold },
+  { shape: union(circle(-0.01, 1.2, 0.03), circle(-0.06, 1.08, 0.028), circle(0.02, 1.02, 0.026)), colour: G.ruby },
+  { shape: circle(0, 2.35, 0.2), colour: G.ruby },
+  { shape: union(box(0, 2.35, 0.03, 0.13), box(0, 2.38, 0.1, 0.03)), colour: G.gold },
+]);
+
+/** The keys of Saint Peter, crossed: one gold, one silver (white). */
+const keys = lancetWindow('Keys of Saint Peter', [G.ruby, G.green], amberGround, [
+  { shape: box(0, 0.22, 0.4, 0.08), colour: G.green },
+  {
+    shape: union(bar(-0.2, 0.55, 0.16, 1.9, 0.032), cut(circle(0.19, 2.02, 0.11), circle(0.19, 2.02, 0.05)), box(-0.13, 0.62, 0.07, 0.035, 0.35), box(-0.11, 0.74, 0.06, 0.03, 0.35)),
+    colour: G.gold,
+  },
+  {
+    shape: union(bar(0.2, 0.55, -0.16, 1.9, 0.032), cut(circle(-0.19, 2.02, 0.11), circle(-0.19, 2.02, 0.05)), box(0.13, 0.62, 0.07, 0.035, -0.35), box(0.11, 0.74, 0.06, 0.03, -0.35)),
+    colour: G.white,
+  },
+  { shape: circle(0, 2.42, 0.13), colour: G.ruby },
+]);
+
+/** The Virgin in a blue mantle holding the Child, both haloed, on red; a star above. */
+const madonna = lancetWindow('Madonna and Child', [G.gold, G.green], redGround, [
+  { shape: box(0, 0.22, 0.3, 0.08), colour: G.green },
+  { shape: polygon([[-0.24, 0.32], [0.24, 0.32], [0.12, 1.56], [-0.12, 1.56]]), colour: G.cobalt },
+  { shape: polygon([[-0.08, 0.32], [0.08, 0.32], [0.04, 1.2], [-0.04, 1.2]]), colour: G.white },
+  { shape: circle(0, 1.7, 0.16), colour: G.gold },
+  { shape: circle(0, 1.68, 0.085), colour: G.white },
+  { shape: circle(0.13, 1.4, 0.09), colour: G.gold },
+  { shape: ellipse(0.11, 1.18, 0.075, 0.13, 0.2), colour: G.amber },
+  { shape: circle(0.13, 1.39, 0.05), colour: G.white },
+  { shape: union(box(0, 2.38, 0.11, 0.11, Math.PI / 4), box(0, 2.38, 0.11, 0.11)), colour: G.gold },
+]);
+
+/** Saint George: his shield with its red cross, and his lance through the dragon below. */
+const george = lancetWindow('Saint George', [G.ruby, G.green], amberGround, [
+  { shape: union(cut(ellipse(0, 0.55, 0.3, 0.17), ellipse(0, 0.55, 0.17, 0.07)), circle(0.28, 0.76, 0.065), bar(-0.27, 0.5, -0.36, 0.78, 0.03)), colour: G.green },
+  { shape: bar(0.32, 0.78, 0.4, 0.8, 0.015), colour: G.ruby },
+  { shape: bar(-0.3, 2.05, 0.27, 0.66, 0.022), colour: G.brown },
+  { shape: union(box(0, 1.58, 0.2, 0.24), polygon([[-0.2, 1.35], [0, 1.0], [0.2, 1.35]])), colour: G.white },
+  {
+    shape: intersect(union(box(0, 1.44, 0.035, 0.42), box(0, 1.6, 0.2, 0.035)), union(box(0, 1.58, 0.2, 0.24), polygon([[-0.2, 1.35], [0, 1.0], [0.2, 1.35]]))),
+    colour: G.ruby,
+  },
+  { shape: circle(0, 2.38, 0.16), colour: G.gold },
+  { shape: union(box(0, 2.38, 0.025, 0.1), box(0, 2.38, 0.1, 0.025)), colour: G.ruby },
+]);
+
+/** The lilies of the Annunciation, in a gold vase. */
+const lilies = lancetWindow('Annunciation lilies', [G.green, G.gold], redGround, [
+  { shape: union(ellipse(0, 0.55, 0.17, 0.19), box(0, 0.8, 0.08, 0.08), box(0, 0.36, 0.1, 0.04)), colour: G.gold },
+  {
+    shape: union(
+      bar(0, 0.85, 0, 2.02, 0.022),
+      bar(0, 1.0, -0.2, 1.68, 0.02),
+      bar(0, 1.0, 0.2, 1.68, 0.02),
+      ellipse(-0.1, 1.22, 0.1, 0.035, 0.6),
+      ellipse(0.1, 1.32, 0.1, 0.035, -0.6),
+      ellipse(-0.07, 1.62, 0.08, 0.03, 0.8),
+    ),
+    colour: G.green,
+  },
+  ...lily(0, 2.1),
+  ...lily(-0.2, 1.76),
+  ...lily(0.2, 1.76),
+]);
+
+/** Calvary: three crosses on a green hill, the sun and the moon above. */
+const calvary = lancetWindow('Calvary', [G.ruby, G.gold], amberGround, [
+  { shape: circle(0, -0.9, 1.25), colour: G.green },
+  { shape: union(box(-0.27, 0.72, 0.022, 0.4), box(-0.27, 0.92, 0.1, 0.022), box(0.27, 0.72, 0.022, 0.4), box(0.27, 0.92, 0.1, 0.022)), colour: G.brown },
+  { shape: union(box(0, 1.2, 0.04, 0.88), box(0, 1.66, 0.25, 0.04)), colour: G.brown },
+  { shape: cut(circle(0, 1.66, 0.085), circle(0, 1.66, 0.05)), colour: G.green },
+  { shape: box(0, 1.93, 0.1, 0.04), colour: G.white },
+  { shape: circle(-0.19, 2.32, 0.1), colour: G.ruby },
+  { shape: cut(circle(0.19, 2.32, 0.1), circle(0.24, 2.36, 0.08)), colour: G.white },
+]);
+
+/** The True Vine: a winding vine with leaves and clusters of grapes. */
+const vine = lancetWindow('The True Vine', [G.green, G.ruby], goldGround, [
+  {
+    shape: union(bar(0, 0.2, 0.12, 0.7, 0.03), bar(0.12, 0.7, -0.1, 1.2, 0.03), bar(-0.1, 1.2, 0.1, 1.7, 0.03), bar(0.1, 1.7, -0.05, 2.2, 0.03), bar(-0.05, 2.2, 0, 2.6, 0.03)),
+    colour: G.green,
+  },
+  {
+    shape: union(ellipse(0.22, 0.62, 0.1, 0.05, 0.4), ellipse(-0.2, 1.12, 0.1, 0.05, -0.4), ellipse(0.2, 1.62, 0.1, 0.05, 0.4), ellipse(-0.15, 2.12, 0.09, 0.045, -0.4), ellipse(0.1, 2.5, 0.07, 0.04, 0.4)),
+    colour: G.leaf,
+  },
+  grapes(-0.18, 0.9, G.purple),
+  grapes(0.21, 1.4, G.ruby),
+  grapes(-0.19, 1.9, G.purple),
+  grapes(0.17, 2.3, G.ruby),
+]);
+
+/** Saint Catherine's wheel, spiked, under a martyr's crown. */
+const catherine = lancetWindow("Saint Catherine's wheel", [G.ruby, G.gold], greenGround, [
+  { shape: box(0, 0.24, 0.4, 0.09), colour: G.ruby },
+  {
+    shape: union(
+      cut(circle(0, 1.35, 0.3), circle(0, 1.35, 0.23)),
+      ...[0, 1, 2, 3, 4, 5].map((k) => bar(0, 1.35, 0.26 * Math.cos((k * Math.PI) / 3), 1.35 + 0.26 * Math.sin((k * Math.PI) / 3), 0.022)),
+      ...Array.from({ length: 12 }, (_, k) => {
+        const a = (k * Math.PI) / 6 + Math.PI / 12;
+        return bar(0.29 * Math.cos(a), 1.35 + 0.29 * Math.sin(a), 0.37 * Math.cos(a), 1.35 + 0.37 * Math.sin(a), 0.018);
+      }),
+    ),
+    colour: G.gold,
+  },
+  { shape: circle(0, 1.35, 0.065), colour: G.ruby },
+  { shape: union(box(0, 2.15, 0.17, 0.045), polygon([[-0.17, 2.19], [-0.09, 2.19], [-0.13, 2.36]]), polygon([[-0.05, 2.19], [0.05, 2.19], [0, 2.42]]), polygon([[0.09, 2.19], [0.17, 2.19], [0.13, 2.36]])), colour: G.gold },
+  { shape: circle(0, 2.15, 0.028), colour: G.ruby },
+]);
+
+/** The Sacred Heart, aflame, bound with thorns, in a glory of rays. */
+const heartShape = union(circle(-0.1, 1.36, 0.12), circle(0.1, 1.36, 0.12), polygon([[-0.215, 1.31], [0, 0.98], [0.215, 1.31]]));
+const sacredHeart = lancetWindow('Sacred Heart', [G.ruby, G.amber], leafGround, [
+  { shape: union(...Array.from({ length: 9 }, (_, k) => {
+    const a = (k * Math.PI) / 8;
+    return bar(0, 1.3, 0.36 * Math.cos(a), 1.3 + 0.62 * Math.sin(a), 0.02);
+  })), colour: G.gold },
+  { shape: flame(0, 1.5, 0.07, 0.32, 0.02), colour: G.amber },
+  { shape: flame(0, 1.5, 0.04, 0.2, 0.01), colour: G.gold },
+  { shape: heartShape, colour: G.ruby },
+  { shape: intersect(heartShape, box(0, 1.27, 0.3, 0.028, -0.12)), colour: G.green },
+  { shape: union(box(0, 0.4, 0.3, 0.06), box(0, 0.26, 0.2, 0.04)), colour: G.gold },
+]);
+
 /** Every design a window may have. */
-export const DESIGNS: WindowDesign[] = [agnusDei, pentecost, saint, station, grisaille];
+export const DESIGNS: WindowDesign[] = [
+  agnusDei,
+  pentecost,
+  saint,
+  station,
+  grisaille,
+  chiRho,
+  pelican,
+  keys,
+  madonna,
+  george,
+  lilies,
+  calvary,
+  vine,
+  catherine,
+  sacredHeart,
+];
 
 /**
  * The design of a window: the `k`th pool of light in `bay`, from its left- or right-hand
@@ -371,6 +551,25 @@ export function blur(px: Float32Array, w: number, h: number, r: number, passes =
 }
 
 /** Premultiplied RGBA (0 … 1) as straight 8-bit pixels for ImageData, its opacity scaled by `alpha` (at most opaque). */
+/**
+ * Push each pixel's colour away from its own grey by `k`, keeping its brightness, so a pool
+ * blurred until its picture is lost still reads as coloured light, not a tinted haze.
+ */
+export function saturate(px: Float32Array, k: number) {
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  for (let i = 0; i < px.length; i += 4) {
+    const a = px[i + 3]!;
+    if (a <= 0) continue;
+    const r = px[i]! / a;
+    const g = px[i + 1]! / a;
+    const b = px[i + 2]! / a;
+    const l = 0.299 * r + 0.587 * g + 0.114 * b;
+    px[i] = clamp(l + (r - l) * k) * a;
+    px[i + 1] = clamp(l + (g - l) * k) * a;
+    px[i + 2] = clamp(l + (b - l) * k) * a;
+  }
+}
+
 export function toBytes(px: Float32Array, alpha = 1): Uint8ClampedArray {
   const out = new Uint8ClampedArray(px.length);
   for (let i = 0; i < px.length; i += 4) {
