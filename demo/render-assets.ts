@@ -7,7 +7,9 @@
 // Serves demo/assets/ with Vite (sprites and font from web/public) and saves each sheet
 // from headless Chrome. Needs `npm install` in web/ (for Vite) and here (for Playwright).
 
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type Browser } from 'playwright';
@@ -52,6 +54,20 @@ async function main() {
       const file = path.join(OUT, `${name}.jpg`);
       fs.writeFileSync(file, Buffer.from(data.split(',')[1]!, 'base64'));
       console.log(`wrote ${path.relative(process.cwd(), file)} (${Math.round(fs.statSync(file).size / 1000)} kB)`);
+    }
+    // A hyperlapse of candles burning down in the close-up of a votive stand.
+    const n = 120;
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'indulgence-melt-'));
+    try {
+      for (let i = 0; i < n; i++) {
+        const data = await page.evaluate(([a, b]) => (window as any).assets.melt(a, b) as string, [i, n] as const);
+        fs.writeFileSync(path.join(tmp, `m${String(i).padStart(4, '0')}.png`), Buffer.from(data.split(',')[1]!, 'base64'));
+      }
+      const gif = path.join(OUT, '..', 'candle-melt.gif');
+      execFileSync('ffmpeg', ['-y', '-v', 'error', '-framerate', '12', '-i', path.join(tmp, 'm%04d.png'), '-vf', 'split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=none', '-loop', '0', gif]);
+      console.log(`wrote ${path.relative(process.cwd(), gif)} (${Math.round(fs.statSync(gif).size / 1000)} kB)`);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   } finally {
     await browser?.close().catch(() => {});

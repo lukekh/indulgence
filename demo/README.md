@@ -62,6 +62,9 @@ Most of a run is real time: priests walk at a solemn 1 tile per second, and the 
 | `stained-glass.jpg` | All fifteen window designs, crisp and upright as designed |
 | `stained-glass-floor.jpg` | Each design as its light lies on the floor of your bay, in game and on its own at 5× |
 | `votive-stand.jpg` | The stands either side of your pews, both facing in, with tapers, votives, pillars and paschal candles, lit |
+| `votive-close-up.jpg` | The close-up of a stand you get by clicking it, in its carved stone archway: candles of every size at every stage of burning |
+| `votive-old-wax.jpg` | Three empty stands, each with old wax generated from a hash of where it stands |
+| `../candle-melt.gif` | A 10 s hyperlapse of that close-up: a candle of each size burning down over 72 hours |
 | `window-rim.jpg` | The window light on the side of each figure: in the pews with and without it, and close up without it, with the faint edge, and in a pool of light |
 | `priest-friar.jpg`, `priest-priest.jpg`, `priest-bishop.jpg`, `priest-cardinal.jpg` | Each vestment in every pose: up the aisle, kneeling, along the pew both ways (profile), walking out, lighting a candle |
 | `thurifer.jpg` | The thurifer at three points of the thurible's swing |

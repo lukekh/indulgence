@@ -6,13 +6,14 @@ import { DbConnection } from './module_bindings';
 import type { Priest, PrayerTick, Candle } from './module_bindings/types';
 import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Drawable, type Viewport, type Camera } from './view';
 import { poseAt, seatedAt, type PriestPlan, type Pose } from './motion';
-import { AMBIENT, drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, applyRays, windowLightAt, type CandleView, type Glow, type Light } from './scene';
+import { AMBIENT, standRect, drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, applyRays, windowLightAt, type CandleView, type Glow, type Light } from './scene';
 import { ditherFrame } from './dither';
 import { PriestSprites, vestmentName, thuriferHand, thuribleBowl, type Side } from './sprites';
 import { thurifersBetween, thuriferX, swing, NPC_LANE_Y, THURIFER_PRAYER } from './npc';
 import { titleOver, cursorNote, drawLine, hoverText, loadFont, measureTag, nameTag, overlaps, placeLine, textSize, CRIMSON, type Rect, type TagStyle } from './text';
 import { drawKey, type KeyEntry, type KeyRow } from './key';
 import { setUpNotices } from './notices';
+import { renderFrame, renderStand, slotHit, standPlacement, standSeed, FRAME, type StandCandle } from './stand';
 import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
 import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, type ViewerGrant } from './net';
@@ -80,7 +81,10 @@ let keyHover: bigint | undefined;
 /** Each priest's prayer being recited and the one before, so a new prayer can take over. */
 const recitals = new Map<bigint, { key: string; cur?: Recital; prev?: Recital }>();
 let mouse: { x: number; y: number } | undefined;
-let hovered: { kind: 'priest'; id: bigint } | { kind: 'candle'; id: bigint } | { kind: 'thurifer'; id: number } | undefined;
+let hovered: { kind: 'priest'; id: bigint } | { kind: 'candle'; id: bigint } | { kind: 'thurifer'; id: number } | { kind: 'stand'; id: number } | undefined;
+/** The arcade whose votive stand is open in the close-up, if any, and where it is drawn. */
+let openStand: number | undefined;
+let standPanel: Rect | undefined;
 
 const now = () => Date.now() + skew;
 
@@ -253,7 +257,8 @@ function frame() {
 
   const own = conn.db.priest.priestId.find(ownId);
   if (own) lastOwnX = own.x;
-  if (own?.state.tag === 'Departing' && !ending && t - ms(own.stateSince) > C.PRIEST_REMOVE_AFTER_MS) {
+  // The dismissal comes as soon as your votive is lit (or, with no candle, once you have gone).
+  if (own?.state.tag === 'Departing' && !ending && t - ms(own.stateSince) > (own.candleId !== 0n ? C.CANDLE_LIT_AFTER_MS : C.PRIEST_REMOVE_AFTER_MS)) {
     closeWith(DISMISSAL, endLine(own.candleId));
   }
   // Your bay's altar at the top centre of the screen; pews run on past the bottom.
@@ -365,7 +370,9 @@ function frame() {
   hovered = undefined;
   keyHover = undefined;
   const inKey = !!mouse && !!keyPanel && mouse.x >= keyPanel.x && mouse.x <= keyPanel.x + keyPanel.w && mouse.y >= keyPanel.y && mouse.y <= keyPanel.y + keyPanel.h;
-  if (mouse && inKey) {
+  if (openStand !== undefined) {
+    // The close-up has the mouse: nothing behind it reacts.
+  } else if (mouse && inKey) {
     keyHover = keyRows.find((r) => mouse!.y >= r.rect.y && mouse!.y < r.rect.y + r.rect.h)?.id;
   } else if (mouse) {
     const bx = (mouse.x - offX) / scale;
@@ -378,10 +385,17 @@ function frame() {
     else {
       const hitC = candles.find((c) => bx >= c.hit[0] && bx <= c.hit[0] + c.hit[2] && by >= c.hit[1] && by <= c.hit[1] + c.hit[3]);
       if (hitC) hovered = { kind: 'candle', id: hitC.row.candleId };
+      else {
+        for (let a = Math.floor(x0 / C.BAY_W) - 1; a <= Math.floor(x1 / C.BAY_W) + 1; a++) {
+          const [sx, sy, sw, sh] = standRect(cam, a);
+          if (bx >= sx && bx <= sx + sw && by >= sy && by <= sy + sh) hovered = { kind: 'stand', id: a };
+        }
+      }
     }
   }
   const hoveredPriest = hovered?.kind === 'priest' ? hovered.id : undefined;
-  display.style.cursor = keyHover !== undefined || (hoveredPriest !== undefined && hoveredPriest !== ownId) ? 'pointer' : 'default';
+  const clickable = keyHover !== undefined || (hoveredPriest !== undefined && hoveredPriest !== ownId) || hovered?.kind === 'stand' || hovered?.kind === 'candle';
+  display.style.cursor = clickable ? 'pointer' : 'default';
 
   // --- words over the scene ------------------------------------------------------------
   const ownPos = own ? [own.x, own.y] : [grant!.px, C.ROW_Y[0]!];
@@ -476,12 +490,45 @@ function frame() {
       }
     } else if (hovered.kind === 'thurifer') {
       hoverText(dctx, mouse.x, mouse.y, 'the thurifer', THURIFER_PRAYER, 'passes every two minutes', notePx);
+    } else if (hovered.kind === 'stand') {
+      cursorNote(dctx, mouse.x, mouse.y, ['the votive stand', 'click to look closer'], notePx);
     } else {
       const c = candles.find((x) => x.row.candleId === hovered!.id)!;
       const lit = c.litAt <= t;
       const hours = Math.max(0, Math.round((c.expiresAt - t) / 3_600_000));
-      hoverText(dctx, mouse.x, mouse.y, c.row.label, lit ? `A ${c.size}, burning for about ${hours} more hour${hours === 1 ? '' : 's'}.` : 'Being lit…', '', notePx);
+      hoverText(dctx, mouse.x, mouse.y, c.row.label, lit ? `A ${c.size}, burning for about ${hours} more hour${hours === 1 ? '' : 's'}.` : 'Being lit…', 'click to look closer', notePx);
     }
+  }
+
+  // --- a votive stand, close up ------------------------------------------------------------
+  standPanel = undefined;
+  if (openStand !== undefined) {
+    const onStand = candles.filter((c) => c.arcade === openStand);
+    const place = standPlacement(display.width, display.height);
+    standPanel = { x: place.x - FRAME * place.k, y: place.y - FRAME * place.k, w: place.w + 2 * FRAME * place.k, h: place.h + 2 * FRAME * place.k };
+    const mx = mouse ? (mouse.x - place.x) / place.k : -1;
+    const my = mouse ? (mouse.y - place.y) / place.k : -1;
+    const over = onStand.find((c) => {
+      const [hx, hy, hw, hh] = slotHit(c as StandCandle);
+      return mx >= hx && mx <= hx + hw && my >= hy && my <= hy + hh;
+    });
+    dctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+    dctx.fillRect(0, 0, display.width, display.height);
+    dctx.imageSmoothingEnabled = false;
+    dctx.drawImage(renderStand(onStand, t, over?.slot, standSeed(openStand, 'left')), place.x, place.y, place.w, place.h);
+    const fk = FRAME * place.k;
+    dctx.drawImage(renderFrame(), place.x - fk, place.y - fk, place.w + 2 * fk, place.h + 2 * fk);
+    const burning = onStand.filter((c) => c.litAt <= t).length;
+    const count = onStand.length === 0 ? 'No candles burn here yet.' : `${burning} candle${burning === 1 ? '' : 's'} burning`;
+    nameTag(dctx, display.width / 2, place.y - fk - textPx * 0.5, `The votive stand · ${count}`, textPx, 'own', t);
+    nameTag(dctx, display.width / 2, place.y + place.h + fk + textPx * 1.4, 'click outside, or press Esc, to return to the nave', Math.round(textPx * 0.8), 'plain', t);
+    if (over && mouse) {
+      const lit = over.litAt <= t;
+      const hours = Math.max(0, Math.round((over.expiresAt - t) / 3_600_000));
+      const left = Math.round(100 * Math.max(0, Math.min(1, (over.expiresAt - t) / (over.expiresAt - over.litAt))));
+      hoverText(dctx, mouse.x, mouse.y, over.row.label, lit ? `A ${over.size}, ${left}% left: about ${hours} more hour${hours === 1 ? '' : 's'}.` : 'Being lit…', '', Math.round(textPx * 0.8));
+    }
+    display.style.cursor = 'default';
   }
 
   // --- the key: friends in the cathedral with you --------------------------------------
@@ -489,8 +536,8 @@ function frame() {
     .filter((p) => p.label && p.row.priestId !== ownId)
     .map((p) => ({ id: p.row.priestId, name: p.label!, leaving: p.row.state.tag === 'Departing', marked: marked.has(p.row.priestId) }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  // (Once you have left, you are no longer among them: no key.)
-  if (ending) {
+  // (Once you have left, you are no longer among them: no key. Nor behind the close-up.)
+  if (ending || openStand !== undefined) {
     keyPanel = undefined;
     keyRows = [];
   } else {
@@ -564,6 +611,21 @@ display.addEventListener('mousemove', (e) => {
 });
 display.addEventListener('mouseleave', () => (mouse = undefined));
 display.addEventListener('click', () => {
+  if (openStand !== undefined) {
+    const inside = mouse && standPanel && mouse.x >= standPanel.x && mouse.x <= standPanel.x + standPanel.w && mouse.y >= standPanel.y && mouse.y <= standPanel.y + standPanel.h;
+    if (!inside) openStand = undefined;
+    return;
+  }
+  if (hovered?.kind === 'stand') {
+    openStand = hovered.id;
+    return;
+  }
+  if (hovered?.kind === 'candle') {
+    const id = hovered.id;
+    const c = conn?.db.candle.candleId.find(id);
+    if (c) openStand = c.arcade;
+    return;
+  }
   if (keyHover !== undefined) {
     if (marked.has(keyHover)) marked.delete(keyHover);
     else marked.add(keyHover);
@@ -572,6 +634,10 @@ display.addEventListener('click', () => {
   if (hovered?.kind !== 'priest' || hovered.id === ownId) return;
   if (muted.has(hovered.id)) muted.delete(hovered.id);
   else muted.add(hovered.id);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') openStand = undefined;
 });
 
 setUpNotices();
