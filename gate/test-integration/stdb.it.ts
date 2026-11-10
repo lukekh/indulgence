@@ -226,8 +226,9 @@ ok('prayer_text view: owner and mutuals read subagent prayers; strangers only ge
 await store.postPrayer({ sessionId: a.session_id, text: LATIN_PRAYERS[2]!, tokens: 60, tier: 'InSession' });
 await sleep(300);
 assert.equal([...va.conn.db.prayerText.iter()].filter((t) => t.priestId === ai.priestId).length, 2);
-assert.equal([...vb.conn.db.prayerText.iter()].filter((t) => t.priestId === ai.priestId).length, 1);
-ok('in-session prayers are shown only to their owner');
+assert.equal([...vb.conn.db.prayerText.iter()].filter((t) => t.priestId === ai.priestId).length, 2);
+assert.equal([...vc.conn.db.prayerText.iter()].filter((t) => t.priestId === ai.priestId).length, 0);
+ok('sharing is the default for every tier: in-session prayers reach mutuals too, and still not strangers');
 
 for (let i = 0; i < 4; i++) await store.postPrayer({ sessionId: a.session_id, text: LATIN_PRAYERS[i % 4]!, tokens: 60, tier: 'Subagent' });
 await sleep(300);
@@ -259,6 +260,19 @@ assert.equal(burnH, 24);
 assert.deepEqual(labels(vb), ['B:bob']);
 assert.deepEqual(texts(vb), []);
 ok(`depart: candle "${candle.label}" on arcade ${candle.arcade} slot ${candle.slot}, lit +${litDelay / 1000} s, burns ${burnH} h; A's labels and texts removed`);
+
+// --- opting out of sharing --------------------------------------------------------------------
+const a2 = await sessions.begin(acct(users.alice), { intention: 'pro anima alice', budget_tokens: 20000, share_prayers: false }, { mode: 'pray', mcpSessionId: 'mcp-alice-2' });
+assert.ok('session_id' in a2 && a2.share_prayers === false, 'begin with share_prayers: false');
+const a2i = await priestOf(a2);
+await store.postPrayer({ sessionId: a2.session_id, text: LATIN_PRAYERS[0]!, tokens: 70, tier: 'Subagent' });
+await sleep(300);
+const textsOf = (v: Viewer) => [...v.conn.db.prayerText.iter()].filter((t) => t.priestId === a2i.priestId).length;
+assert.equal(textsOf(va), 1, 'the owner still reads her own prayer');
+assert.equal(textsOf(vb), 0, 'a mutual does not');
+assert.equal(textsOf(vc), 0, 'a stranger does not');
+assert.ok(vb.conn.db.prayerTick.priestId.find(a2i.priestId), 'but a mutual still sees the priest pray (a canned prayer)');
+ok('opting out: only the owner reads the prayers; everyone else gets only the tick that selects a canned prayer');
 
 // --- forget ------------------------------------------------------------------------------------
 const before = sql(`SELECT * FROM account WHERE gh_hash = '${keys.ghHash(users.alice.id)}'`);

@@ -9,6 +9,7 @@ export interface FakeSession {
   spent: number;
   live: boolean;
   tier: TierName;
+  share: boolean;
   prayers: { text: string; tokens: number; tier: TierName }[];
 }
 
@@ -61,7 +62,7 @@ export class FakeStore implements Store {
     this.maybeFail();
     this.revoked.set(grant, Math.floor(Date.now() / 1000));
   }
-  async enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }) {
+  async enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName; share: boolean }) {
     this.maybeFail();
     if (!this.accounts.has(a.ghHash)) throw new StoreError('no_account');
     for (const s of this.sessions.values()) {

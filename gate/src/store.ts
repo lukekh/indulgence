@@ -31,7 +31,7 @@ export interface Store {
   touchAccount(ghHash: string, grant: string, issuedAtS: number): Promise<void>;
   /** Revoke a grant: its refresh tokens issued until now stop working. */
   revokeGrant(ghHash: string, grant: string): Promise<void>;
-  enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }): Promise<void>;
+  enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName; share: boolean }): Promise<void>;
   postPrayer(a: { sessionId: string; text: string; tokens: number; tier: TierName }): Promise<void>;
   heartbeat(sessionId: string, cancelAt?: Date): Promise<void>;
   depart(sessionId: string): Promise<void>;
