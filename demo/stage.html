@@ -29,6 +29,13 @@
   .url { flex: 1; margin: 0 60px 0 14px; height: 22px; border-radius: 6px; background: #151210; color: #cfc4b2; display: flex; align-items: center; padding: 0 10px; font: 12px -apple-system, 'Helvetica Neue', sans-serif; }
   .url .lock { color: var(--dim); margin-right: 6px; }
   #frame { width: var(--w); height: calc(var(--h) - 34px); border: 0; display: block; background: #0c0907; }
+  /* Video: Claude Code alone in the terminal, and a visible mouse. */
+  .video #gate, .video .pane-label { display: none; }
+  .video #claude { height: calc(var(--h) - 80px); padding: 18px 26px; }
+  #mouse { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; transform: translate(-100px, -100px); }
+  #mouse svg { width: 24px; height: 36px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .7)); }
+  .ripple { position: fixed; z-index: 999; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .85); pointer-events: none; animation: ripple .5s ease-out forwards; }
+  @keyframes ripple { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
 </style>
 </head>
 <body>
@@ -43,6 +50,7 @@
     <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url"><span class="lock">ⓘ</span><span id="addr"></span></div></div>
     <iframe id="frame" title="viewer"></iframe>
   </div>
+  <div id="mouse"><svg viewBox="0 0 16 24"><path d="M1.5 1.5 L1.5 19 L5.6 15 L8.6 22.2 L11.4 21 L8.4 13.9 L14 13.9 Z" fill="#fff" stroke="#000" stroke-width="1.1" stroke-linejoin="round"/></svg></div>
 <script>
 const q = new URLSearchParams(location.search);
 const W = Number(q.get('w') || 1000);
@@ -53,6 +61,14 @@ document.documentElement.style.setProperty('--font', W >= 1300 ? '16px' : '13px'
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+if (q.get('video') === '1') {
+  document.body.classList.add('video');
+  // Readable on a 1080p video.
+  document.documentElement.style.setProperty('--font', '22px');
+}
+/** In the video, links show a public-looking address instead of the demo's localhost port. */
+const SITE = q.get('site');
+const shown = (u) => (SITE ? u.replace(/https?:\/\/(localhost|127\.0\.0\.1):\d+/g, SITE) : u);
 
 function append(pane, html) {
   const el = $(pane);
@@ -92,7 +108,8 @@ window.stage = {
   },
   showBegin(resultText, url) {
     $('spin')?.remove();
-    const lines = resultText.split('\n').filter((l) => !l.startsWith('{'));
+    const lines = shown(resultText).split('\n').filter((l) => !l.startsWith('{'));
+    url = shown(url);
     append('claude', `  <span class="dim">⎿</span>  ${esc(lines[0])}\n` + lines.slice(1).map((l) => `     <span class="dim">${esc(l)}</span>\n`).join(''));
     append('claude', `\n<span class="gold">⏺</span> <span class="blue">${esc(url)}</span>\n`);
   },
@@ -107,12 +124,20 @@ window.stage = {
     if (buf && lines) buf.innerHTML = lines.map((l) => `     <span class="gold">${esc(l)}</span>\n`).join('');
   },
   openBrowser(url) {
-    $('addr').textContent = url.replace(/^https?:\/\//, '').replace(/#.*$/, '');
+    $('addr').textContent = shown(url).replace(/^https?:\/\//, '').replace(/#.*$/, '');
     $('frame').src = url;
     $('browser').classList.add('open');
   },
   closeBrowser() {
     $('browser').classList.remove('open');
+  },
+  pointer(x, y) {
+    $('mouse').style.transform = `translate(${x - 2}px, ${y - 2}px)`;
+  },
+  click(x, y) {
+    document.body.insertAdjacentHTML('beforeend', `<div class="ripple" style="left:${x}px;top:${y}px"></div>`);
+    const r = document.body.lastElementChild;
+    setTimeout(() => r.remove(), 600);
   },
   finish(log) {
     append('claude', `\n<span class="gold">⏺</span> Your votive is lit. Deo gratias.\n  Prayers: <span class="blue">${esc(log)}</span>\n\n<span class="prompt">&gt;</span> <span class="cursor"></span>`);

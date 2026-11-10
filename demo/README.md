@@ -71,3 +71,32 @@ Most of a run is real time: priests walk at a solemn 1 tile per second, and the 
 | `priests.jpg` | Every vestment from behind and from the front, and the thurifer |
 
 It serves `demo/assets/` with Vite (sprites and font from `web/public/`) and saves each sheet from headless Chrome, so it needs `npm install` in `web/` as well as here, but no SpacetimeDB or Rust.
+
+## The video
+
+`npm run video` makes a 1080p video of a longer, more faithful session for YouTube: Claude Code alone in the terminal, the cathedral at 2× so the next bay shows on either side, a visible mouse that tours the scene (a friend, the key, a votive, the thurifer, the notices), your priest praying for most of a minute, and then departing to light its candle. It is `video.ts`, built like `record.ts` (a fresh SpacetimeDB, the module, the viewer and the real gate), with Chrome's screencast at about 30 fps encoded by ffmpeg to H.264 + AAC. It takes about 10 minutes and writes `~/Movies/indulgence-demo.mp4`.
+
+```sh
+VIDEO_AUDIO=/path/to/music.wav npm run video
+```
+
+The music is yours to supply: none is in the repository. To put it in a cathedral first, run it through `cathedral_reverb.py`:
+
+```sh
+python3 -m pip install -r requirements.txt        # numpy, scipy
+python3 cathedral_reverb.py music.ogg music-cathedral.wav [seconds]
+```
+
+It convolves the recording with a synthesised room impulse response for a long gothic nave (90 × 28 × 30 m, choir in the chancel, listener halfway down). The late tail is decaying noise in seven octave bands, each decaying at the rate set by the walls' absorption (Eyring) and the air's, which dominates at high frequencies, about 5.6 s at 1 kHz; the early reflections are the first- and second-order image sources of the shoebox, panned by direction and darkened by each bounce. The result is mixed 55% dry, 85% wet. `video.ts` then fades the track in and out and normalises it to about −18 LUFS.
+
+The video recasts the cathedral so the words over each priest have room, without changing it for anyone else. `video: true` in `scenario.ts` gives two friends who go by their GitHub usernames and don't know each other, strangers with ordinary handles, and a longer list of prayers for you; and the module is built with `INDULGENCE_VIDEO_SEATING=1` (see `module/build.rs`), which seats priests apart and fills bays of five. **Never publish a module built that way to a real database**; the build prints a warning when it is on.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `VIDEO_AUDIO` | | The music, a `.wav` (required) |
+| `VIDEO_OUT` | `~/Movies/indulgence-demo.mp4` | Output path |
+| `VIDEO_LOGIN` | `lukekh` | Your GitHub login in the video |
+| `VIDEO_SITE` | `https://indulgence.example` | The address shown in place of the demo's localhost links |
+| `VIDEO_SEATED_MS` | 55000 | Real time spent watching your priest recite once it has sat down |
+| `VIDEO_STRANGERS` | 13 | Size of the congregation |
+| `VIDEO_KEEP_TMP` | | `1` keeps the run folder in `.cache/` |

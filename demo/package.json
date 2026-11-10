@@ -10,6 +10,7 @@
     "live": "tsx record.ts --live",
     "sandbox": "tsx record.ts --sandbox",
     "assets": "tsx render-assets.ts",
+    "video": "tsx video.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

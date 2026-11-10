@@ -9,6 +9,7 @@
     "gif": "npm --prefix demo run gif",
     "quick": "npm --prefix demo run quick",
     "assets": "npm --prefix demo run assets",
+    "video": "npm --prefix demo run video",
     "test": "npm --prefix gate test && npm --prefix web test"
   }
 }

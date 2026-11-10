@@ -536,8 +536,8 @@ function frame() {
     .filter((p) => p.label && p.row.priestId !== ownId)
     .map((p) => ({ id: p.row.priestId, name: p.label!, leaving: p.row.state.tag === 'Departing', marked: marked.has(p.row.priestId) }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  // (Once you have left, you are no longer among them: no key. Nor behind the close-up.)
-  if (ending || openStand !== undefined) {
+  // (Once you have left, or are leaving, you are no longer among them: no key. Nor behind the close-up.)
+  if (ending || openStand !== undefined || own?.state.tag === 'Departing') {
     keyPanel = undefined;
     keyRows = [];
   } else {

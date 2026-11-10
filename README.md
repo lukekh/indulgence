@@ -26,7 +26,7 @@ npm run install:all   # npm install in gate/, web/ and demo/
 npm run sandbox       # prints "Your priest: http://localhost:…"; Ctrl+C departs everyone and shuts down
 ```
 
-Open the link. The first build compiles the module, so allow a minute. `npm run live` plays a scripted run in a visible Chrome window, and `npm run gif` records it (needs Google Chrome and ffmpeg). See [`demo/`](demo).
+Open the link. The first build compiles the module, so allow a minute. `npm run live` plays a scripted run in a visible Chrome window, and `npm run gif` records it (needs Google Chrome and ffmpeg), and `npm run video` makes a 1080p video with your own music. See [`demo/`](demo).
 
 ## Run the real thing locally
 
