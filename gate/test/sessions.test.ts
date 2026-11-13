@@ -69,7 +69,7 @@ describe('begin', () => {
     const { sessions } = setup();
     expect((await begin(sessions, alice, { budget_tokens: 5 })).budget_tokens).toBe(C.BUDGET_MIN);
     expect((await begin(sessions, alice, { budget_tokens: 5e9 })).budget_tokens).toBe(C.BUDGET_MAX);
-    expect(await sessions.begin(alice, { intention: 'x'.repeat(141) }, { mode: 'pray' })).toEqual({ error: 'invalid_intention' });
+    expect(await sessions.begin(alice, { intention: 'x'.repeat(C.INTENTION_MAX_CHARS + 1) }, { mode: 'pray' })).toEqual({ error: 'invalid_intention' });
     expect(await sessions.begin(alice, { intention: 'cat', budget_tokens: 'lots' }, { mode: 'pray' })).toEqual({ error: 'bad_args' });
   });
 

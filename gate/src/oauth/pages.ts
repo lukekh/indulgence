@@ -59,9 +59,9 @@ export function authorizePage(request: string, client: string, destination: stri
   return shell(
     '/indulgence',
     `<h1>/indulgence</h1><p class="sub">An application wants to use /indulgence as you</p>
-<div class="card"><p><b>${escapeHtml(client)}</b> (as it describes itself; not verified by /indulgence) wants to act as you in the cathedral: start and end your sessions, pray in your name, and delete your account.</p>
+<div class="card"><p><b>${escapeHtml(client)}</b> (as it describes itself; not verified by /indulgence) wants to act as you in the cathedral: start and end your sessions, pray in your name, and ask for your account to be deleted (which you would confirm yourself, in your browser).</p>
 <p>After you sign in with GitHub, it will receive that access at <b>${escapeHtml(destination)}</b>.</p>
-<p>Continue only if you have just run <b>/indulgence</b> or connected the indulgence server in Claude Code yourself.</p>
+<p>Continue only if you have just connected the indulgence server, or run <b>/indulgence</b>, in your own coding agent (Claude Code, Codex, Gemini CLI, OpenCode or another), and the name above is that agent's.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="request" value="${escapeHtml(request)}">
 <button class="primary" name="decision" value="allow">Continue with GitHub</button>
@@ -102,7 +102,7 @@ export function deleteAccountPage(token: string): string {
   );
 }
 
-export function messagePage(title: string, message: string, continueTo?: string): string {
-  const link = continueTo ? `<p><a href="${escapeHtml(continueTo)}">Return to Claude Code</a></p>` : '';
+export function messagePage(title: string, message: string, continueTo?: string, linkText = 'Return to your agent'): string {
+  const link = continueTo ? `<p><a href="${escapeHtml(continueTo)}">${escapeHtml(linkText)}</a></p>` : '';
   return shell(title, `<h1>${escapeHtml(title)}</h1><div class="card"><p>${escapeHtml(message)}</p>${link}</div>`, continueTo);
 }
