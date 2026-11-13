@@ -20,10 +20,62 @@ export type RejectReason =
 export type Verdict = { ok: true; text: string } | { ok: false; reason: RejectReason };
 
 const LATIN = new Set(LATIN_WORDS.split('\n'));
+/**
+ * Entries of the multilingual denylist that are let through after all. The list (LDNOOBW) is
+ * built to be cautious for any site in any language, so it sweeps up a good deal that is not
+ * abuse: people's names, everyday words that are slang somewhere, plain words for the body
+ * and for things people do pray about, and mild oaths. What stays blocked is what the list
+ * is really for: slurs against groups of people, hard obscenity and pornographic terms.
+ *
+ * Entries are in the list's folded form (lower case, no diacritics).
+ */
+export const DENY_ALLOWED: ReadonlySet<string> = new Set(
+  [
+    // Names of people (and a console maker).
+    'peter anita dick del mona pele pitt sega',
+    // Everyday words in English, Spanish, French, Italian, Portuguese or Latin.
+    'bite con fan got gotten hard franc comer burro pinto stake trio mama pot escort domination bondage suck butt gat gol',
+    'perse pica pico sas tanga rosette pompa saco pataka scat snatch swinger fingering mufti bander bur bobo bonze biga',
+    'panna pau pina reet sike gerbe concha fava hol',
+    // Plain words for the body, for sexuality and for wrongs done: things a prayer may be about.
+    'anal clitoris ejaculation fecal genitals heterosexual homosexual intercourse nipple nude nudity penis pubes sexual',
+    'sexuality sexually eunuch incest rape raping rapist sodomy sadism masturbate masturbation pornography porn orgy orgasm',
+    'nazi swastika bestiality voyeur topless erotic erotism autoerotic homoerotic',
+    // Mild oaths and rude words.
+    'ass bastard bitch whore hooker boob tit titty cock sexy horny smut playboy spunk tosser kinky',
+  ]
+    .join(' ')
+    .split(' ')
+    .concat([
+      // Phrases that are ordinary speech.
+      'big black',
+      'god damn',
+      'hard core',
+      'tied up',
+      'tight white',
+      'girl on',
+      'girl on top',
+      'taste my',
+      'tongue in a',
+      'how to kill',
+      'how to murder',
+      'huge fat',
+      'hot chick',
+      'tainted love',
+      's m',
+      'wrapping men',
+      'sultry women',
+      'jelly donut',
+      'date rape',
+      'de hond uitlaten',
+      'gras maaien',
+      'porca miseria',
+    ]),
+);
 const DENY_SINGLE = new Set<string>();
 const DENY_PHRASES: string[][] = [];
 for (const entry of DENY_TOKENS.split('\n')) {
-  if (!entry) continue;
+  if (!entry || DENY_ALLOWED.has(entry)) continue;
   const toks = entry.split(' ');
   if (toks.length === 1) DENY_SINGLE.add(toks[0]!);
   else DENY_PHRASES.push(toks);
