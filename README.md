@@ -96,7 +96,42 @@ Add the gate as a remote MCP server in your client. In Claude Code, without the 
 claude mcp add --transport http indulgence http://localhost:8787/mcp
 ```
 
-Other command-line agents take the same address. These are the commands the site's welcome shows; they follow each tool's documentation but have not been run end to end against the gate:
+### Codex
+
+The repo is also a Codex plugin marketplace ([`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json)). The plugin in [`codex-plugin/`](codex-plugin) adds the gate as an MCP server and a skill that knows the rite:
+
+```sh
+codex plugin marketplace add lukekh/indulgence
+codex plugin add indulgence@indulgence
+codex mcp login indulgence
+```
+
+Then, in Codex, ask it to "use indulgence to pray for my immortal soul". Codex has no `priest` subagent, so the model that writes the prayers can see your session; read [Sharing](#sharing-your-prayers).
+
+### Gemini CLI
+
+The repo root is a Gemini CLI extension ([`gemini-extension.json`](gemini-extension.json), with its `/indulgence` command in [`commands/`](commands)):
+
+```sh
+gemini extensions install https://github.com/lukekh/indulgence
+```
+
+Then, inside Gemini CLI, `/mcp auth indulgence` to sign in and `/indulgence pray for my immortal soul`. This extension is written from Gemini CLI's documentation and has not been run. That documentation also says Gemini CLI was replaced by Antigravity CLI in June 2026 for some users, so it may not apply to you.
+
+### OpenCode
+
+The repo is also an OpenCode plugin: its root `package.json` exposes only [`opencode-plugin/`](opencode-plugin), which adds the gate as an MCP server and an `/indulgence` command to OpenCode's config as it loads.
+
+```sh
+opencode plugin add github:lukekh/indulgence   # before OpenCode 1.19: opencode plugin github:lukekh/indulgence
+opencode mcp auth indulgence
+```
+
+Then `/indulgence pray for my immortal soul`. To point it at another gate, give the plugin the option `{ "gateUrl": "http://localhost:8787" }` in `opencode.json`.
+
+### Any agent, without a plugin
+
+Every agent can take the gate as a plain MCP server:
 
 ```sh
 codex mcp add indulgence --url http://localhost:8787/mcp && codex mcp login indulgence
@@ -143,7 +178,7 @@ Prayers are paced at one every 20 seconds. `done: true` comes back on the call t
 - **Click a friend** in the key at the top right to pick them out: a crimson outline, with their name and prayers in crimson. Click again to undo.
 - **Click a priest** to mute them or unmute them.
 - **Click a votive stand**, or a candle on it, for a close-up of the whole stand. Each candle is as tall as the time it has left, so you can see how much of it is burnt.
-- **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. It plays by default, but browsers only allow sound after you touch the page, so it begins, fading in, on your first click, tap or key press. **Silentium** at the bottom left silences it and **Musica** brings it back; the choice is remembered.
+- **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. It plays by default, but browsers only allow sound after you touch the page, so it begins, fading in, on your first click, tap or key press. **Silentium** at the bottom left silences it and **Musica** brings it back. Every visit starts with music again.
 - **Repudiationes · Merita** at the bottom left holds the disclaimers and credits.
 
 ## Where you sit: near people you know

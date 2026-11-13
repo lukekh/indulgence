@@ -1,0 +1,20 @@
+{
+  "name": "indulgence",
+  "interface": {
+    "displayName": "Indulgence"
+  },
+  "plugins": [
+    {
+      "name": "indulgence",
+      "source": {
+        "source": "local",
+        "path": "./codex-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Creativity"
+    }
+  ]
+}

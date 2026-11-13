@@ -3,9 +3,9 @@
 // The recordings (web/public/audio) were put through cathedral_reverb.py. They play one after
 // another, beginning with the Dies irae, and start again after the last. Browsers do not
 // let a page start sound until you have touched it, so if playback is refused at first it
-// begins, fading in, on your first click, tap or key press. "Silentium" in the bottom left silences it, and "Musica" brings it back; the
-// choice is remembered. A build with VITE_MUSIC=off (the demos, which have their own
-// soundtrack) has no music and no button.
+// begins, fading in, on your first click, tap or key press. "Silentium" in the bottom left
+// silences it for this visit, and "Musica" brings it back. A build with VITE_MUSIC=off (the
+// demos, which have their own soundtrack) has no music and no button.
 
 import { asset } from './base';
 
@@ -21,7 +21,6 @@ export const TRACKS: readonly string[] = [
 export const MUSIC_VOLUME = 0.5;
 export const FADE_IN_MS = 3000;
 export const FADE_OUT_MS = 1200;
-const STORAGE_KEY = 'indulgence:music';
 /** What may count as touching the page, so that a browser lets sound begin. */
 const GESTURES = ['pointerdown', 'pointerup', 'mousedown', 'touchend', 'click', 'keydown'] as const;
 
@@ -37,22 +36,6 @@ export function nextTrack(i: number, count: number = TRACKS.length): number {
   return (i + 1) % count;
 }
 
-function remembered(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-function remember(wanted: boolean) {
-  try {
-    localStorage.setItem(STORAGE_KEY, wanted ? 'on' : 'off');
-  } catch {
-    // Private windows and blocked storage: the choice lasts until the page closes.
-  }
-}
-
 export function setUpMusic(doc: Document = document) {
   if (import.meta.env.VITE_MUSIC === 'off') return;
   const wrap = doc.getElementById('music-wrap');
@@ -64,7 +47,9 @@ export function setUpMusic(doc: Document = document) {
   const audio = new Audio(asset(TRACKS[track]!));
   audio.preload = 'auto';
   audio.volume = 0;
-  let wanted = remembered();
+  // Every visit begins with music; "Silentium" silences this visit only. (The choice used to
+  // be remembered, which left the page silent for good after one click.)
+  let wanted = true;
   let fade = 0;
 
   const label = () => {
@@ -125,7 +110,6 @@ export function setUpMusic(doc: Document = document) {
   button.addEventListener('click', () => {
     if (!audio.paused && wanted) {
       wanted = false;
-      remember(false);
       ramp(0, FADE_OUT_MS, () => {
         audio.pause();
         label();
@@ -133,7 +117,6 @@ export function setUpMusic(doc: Document = document) {
       label();
     } else {
       wanted = true;
-      remember(true);
       void start();
     }
   });
@@ -146,6 +129,5 @@ export function setUpMusic(doc: Document = document) {
   });
 
   label();
-  if (wanted) void start().then((ok) => !ok && waitForGesture());
-  else waitForGesture();
+  void start().then((ok) => !ok && waitForGesture());
 }
