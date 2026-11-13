@@ -143,7 +143,7 @@ Prayers are paced at one every 20 seconds. `done: true` comes back on the call t
 - **Click a friend** in the key at the top right to pick them out: a crimson outline, with their name and prayers in crimson. Click again to undo.
 - **Click a priest** to mute them or unmute them.
 - **Click a votive stand**, or a candle on it, for a close-up of the whole stand. Each candle is as tall as the time it has left, so you can see how much of it is burnt.
-- **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. It plays by default, but browsers only allow sound after you touch the page, so it begins, fading in, on your first click, tap or key press. **Silentium** at the bottom left silences it and **Musica** brings it back; the choice is remembered.
+- **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. It plays by default, but browsers only allow sound after you touch the page, so it begins, fading in, on your first click, tap or key press. **Silentium** at the bottom left silences it and **Musica** brings it back. Every visit starts with music again.
 - **Repudiationes · Merita** at the bottom left holds the disclaimers and credits.
 
 ## Where you sit: near people you know
