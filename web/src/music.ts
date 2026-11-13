@@ -3,10 +3,8 @@
 // The recordings (web/public/audio) were put through cathedral_reverb.py. They play one after
 // another, beginning with the Dies irae, and start again after the last. Browsers do not
 // let a page start sound until you have touched it, so if playback is refused at first it
-// begins, fading in, on your first click, tap or key press. So that this is the first thing
-// you do, the page then opens as a black one with the single word "Intra": press it and you
-// are let in, to music. "Silentium" in the bottom left silences it for this visit, and
-// "Musica" brings it back. A build with VITE_MUSIC=off (the demos, which have their own
+// begins, fading in, on your first click, tap or key press. "Silentium" in the bottom left silences it, and "Musica" brings it back; the
+// choice is remembered. A build with VITE_MUSIC=off (the demos, which have their own
 // soundtrack) has no music and no button.
 
 import { asset } from './base';
@@ -23,8 +21,7 @@ export const TRACKS: readonly string[] = [
 export const MUSIC_VOLUME = 0.5;
 export const FADE_IN_MS = 3000;
 export const FADE_OUT_MS = 1200;
-/** How long the black page takes to fade once you are let in; matches #intra's transition. */
-export const DOOR_FADE_MS = 900;
+const STORAGE_KEY = 'indulgence:music';
 /** What may count as touching the page, so that a browser lets sound begin. */
 const GESTURES = ['pointerdown', 'pointerup', 'mousedown', 'touchend', 'click', 'keydown'] as const;
 
@@ -40,40 +37,34 @@ export function nextTrack(i: number, count: number = TRACKS.length): number {
   return (i + 1) % count;
 }
 
-export interface Music {
-  /**
-   * Settles once the visitor is in: at once if the music could begin by itself (or there is
-   * none), otherwise when they have pressed "Intra". The page waits for this before it
-   * plays its opening title.
-   */
-  entered: Promise<void>;
+function remembered(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
 }
 
-export function setUpMusic(doc: Document = document): Music {
-  const door = doc.getElementById('intra') as HTMLButtonElement | null;
-  /** Take the black page away: at once, or fading if the visitor has been looking at it. */
-  const open = (fading: boolean) => {
-    if (!door || door.hidden) return;
-    if (!fading) return void (door.hidden = true);
-    door.classList.add('opening');
-    window.setTimeout(() => (door.hidden = true), DOOR_FADE_MS);
-  };
+function remember(wanted: boolean) {
+  try {
+    localStorage.setItem(STORAGE_KEY, wanted ? 'on' : 'off');
+  } catch {
+    // Private windows and blocked storage: the choice lasts until the page closes.
+  }
+}
+
+export function setUpMusic(doc: Document = document) {
+  if (import.meta.env.VITE_MUSIC === 'off') return;
   const wrap = doc.getElementById('music-wrap');
   const button = doc.getElementById('music') as HTMLButtonElement | null;
-  if (import.meta.env.VITE_MUSIC === 'off' || !wrap || !button || typeof Audio === 'undefined') {
-    open(false);
-    return { entered: Promise.resolve() };
-  }
+  if (!wrap || !button || typeof Audio === 'undefined') return;
   wrap.hidden = false;
-  let enter: () => void = () => {};
-  const entered = new Promise<void>((r) => (enter = r));
 
   let track = 0;
   const audio = new Audio(asset(TRACKS[track]!));
   audio.preload = 'auto';
   audio.volume = 0;
-  // Every visit begins with music; "Silentium" silences this visit only.
-  let wanted = true;
+  let wanted = remembered();
   let fade = 0;
 
   const label = () => {
@@ -124,9 +115,7 @@ export function setUpMusic(doc: Document = document): Music {
     starting = true;
     void start().then((ok) => {
       starting = false;
-      if (!ok) return;
-      stopWaiting();
-      comeIn(true); // a key press lets you in as well as a click
+      if (ok) stopWaiting();
     });
   };
   const waitForGesture = () => {
@@ -136,6 +125,7 @@ export function setUpMusic(doc: Document = document): Music {
   button.addEventListener('click', () => {
     if (!audio.paused && wanted) {
       wanted = false;
+      remember(false);
       ramp(0, FADE_OUT_MS, () => {
         audio.pause();
         label();
@@ -143,6 +133,7 @@ export function setUpMusic(doc: Document = document): Music {
       label();
     } else {
       wanted = true;
+      remember(true);
       void start();
     }
   });
@@ -154,24 +145,7 @@ export function setUpMusic(doc: Document = document): Music {
     if (wanted) void audio.play().catch(() => label());
   });
 
-  // The door: a black page with one word on it. If the browser lets the music begin by
-  // itself the door opens unseen. Otherwise "Intra" appears, and pressing it (or any key)
-  // is the touch the browser wanted: the music starts and the door fades away.
-  const comeIn = (fading: boolean) => {
-    open(fading);
-    enter();
-  };
-  door?.addEventListener('click', () => {
-    void start();
-    comeIn(true);
-  });
-
   label();
-  void start().then((ok) => {
-    if (ok) return comeIn(false);
-    waitForGesture();
-    if (door && !door.hidden) door.classList.add('asking');
-    else enter();
-  });
-  return { entered };
+  if (wanted) void start().then((ok) => !ok && waitForGesture());
+  else waitForGesture();
 }

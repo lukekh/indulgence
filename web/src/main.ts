@@ -59,8 +59,6 @@ const INTRO_FADE_MS = 1500;
 /** The dismissal's line beneath, for a priest that left a candle burning or not. */
 const endLine = (candleId: bigint) => (candleId !== 0n ? 'Your votive is lit. Deo gratias.' : 'Deo gratias.');
 let introAt: number | undefined;
-/** Whether the visitor is past the black "Intra" page (at once, if there was none). */
-let entered = false;
 /** Where your priest last was, so the camera stays put once it has gone. */
 let lastOwnX: number | undefined;
 let closingSince = 0;
@@ -586,9 +584,8 @@ function frame() {
     nameTag(dctx, display.width / 2, display.height - textPx, 'reconnecting…', textPx, 'plain', t);
   }
   // The title over the cathedral as you arrive: five seconds, then it fades.
-  // (It waits until you are let in, so it is not played to a black page.)
-  if (entered) introAt ??= Date.now();
-  const sinceIntro = introAt === undefined ? 0 : Date.now() - introAt;
+  introAt ??= Date.now();
+  const sinceIntro = Date.now() - introAt;
   if (!spectator && !ending && sinceIntro < INTRO_HOLD_MS + INTRO_FADE_MS) {
     titleOver(dctx, Math.min(1, 1 - (sinceIntro - INTRO_HOLD_MS) / INTRO_FADE_MS), TITLE, MOTTO, Date.now());
   }
@@ -677,6 +674,6 @@ window.addEventListener('keydown', (e) => {
 
 setUpNotices();
 const landing = setUpLanding(GATE_URL);
-void setUpMusic().entered.then(() => (entered = true));
+setUpMusic();
 void start();
 requestAnimationFrame(frame);
