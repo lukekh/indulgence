@@ -10,8 +10,10 @@ import {
   latinRatio,
   leakShaped,
   denied,
+  DENY_ALLOWED,
 } from '../src/safety/index.js';
 import { LATIN_PRAYERS } from './fakes.js';
+import { DENY_TOKENS } from '../src/safety/data/denylist.js';
 
 describe('cleaning', () => {
   it('normalises to NFC and strips control, zero-width and bidi characters', () => {
@@ -99,6 +101,33 @@ describe('limits', () => {
     expect(checkIntention('for my fucking cat').ok).toBe(false);
     expect(checkIntention('')).toEqual({ ok: false, reason: 'empty' });
   });
+  it('lets through names, everyday words, plain words for the body and mild oaths that the denylist sweeps up', () => {
+    for (const intention of [
+      "pray for Peter Thiel's soul",
+      'for Anita, and for Dick Cheney',
+      'for my bastard of a brother, who got a hard time at the stake',
+      'for the victims of rape, and for those in the bondage of sin',
+      'deliver him from pornography and from the whore of Babylon',
+      'god damn it, for my big black cat',
+    ]) {
+      expect(checkIntention(intention), intention).toMatchObject({ ok: true });
+    }
+    expect(checkPrayer('Oremus pro anima Peter Thiel. Domine, exaudi orationem meam, et clamor meus ad te veniat. Amen.').ok).toBe(true);
+    expect(cleanDisplayName('Dick Van Dyke')).toBe('Dick Van Dyke');
+  });
+
+  it('keeps every allowed entry honest: each one really is on the list, in its folded form', () => {
+    const listed = new Set(DENY_TOKENS.split('\n'));
+    for (const entry of DENY_ALLOWED) expect(listed.has(entry), entry).toBe(true);
+  });
+
+  it('still refuses slurs and hard obscenity', () => {
+    for (const bad of ['for my fucking cat', 'for that cunt', 'for a nigger', 'for a kike', 'for a fag', 'piece of shit']) {
+      expect(checkIntention(bad).ok, bad).toBe(false);
+    }
+    expect(cleanDisplayName('Shit Head')).toBe('');
+  });
+
   it('cleans display names: 40-char cap and denylist', () => {
     expect(cleanDisplayName('Ada Lovelace')).toBe('Ada Lovelace');
     expect([...cleanDisplayName('A'.repeat(60))].length).toBe(40);
