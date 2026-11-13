@@ -7,7 +7,9 @@
 // choice is remembered. A build with VITE_MUSIC=off (the demos, which have their own
 // soundtrack) has no music and no button.
 
-/** The chants in the order they are sung. Credits: web/public/audio/README.md and Merita. */
+import { asset } from './base';
+
+/** The chants in the order they are sung, as paths from the site root. Credits: web/public/audio/README.md and Merita. */
 export const TRACKS: readonly string[] = [
   '/audio/dies-irae-cathedral.m4a',
   '/audio/pueri-hebraeorum-portantes-cathedral.m4a',
@@ -57,7 +59,7 @@ export function setUpMusic(doc: Document = document) {
   wrap.hidden = false;
 
   let track = 0;
-  const audio = new Audio(TRACKS[track]);
+  const audio = new Audio(asset(TRACKS[track]!));
   audio.preload = 'auto';
   audio.volume = 0;
   let wanted = remembered();
@@ -126,7 +128,7 @@ export function setUpMusic(doc: Document = document) {
   // One chant ends and the next begins, at the volume this one had.
   audio.addEventListener('ended', () => {
     track = nextTrack(track);
-    audio.src = TRACKS[track]!;
+    audio.src = asset(TRACKS[track]!);
     if (wanted) void audio.play().catch(() => label());
   });
 

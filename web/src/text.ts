@@ -7,8 +7,11 @@
 // 3.4 s, over a soft two-layer gold glow. Friends you pick out in the key are named in
 // crimson.
 
+import { asset } from './base';
+
 export const FACE = '"Grenze Gotisch", Georgia, "Times New Roman", serif';
-const FONT_URL = '/fonts/GrenzeGotisch.ttf';
+
+const FONT_URL = asset('/fonts/GrenzeGotisch.ttf');
 
 export const GOLD = 'rgb(222, 180, 89)';
 /** The sweep: rgb(255 244 208 / 82%) over the gold. */

@@ -2,7 +2,7 @@
   "mcpServers": {
     "indulgence": {
       "type": "http",
-      "url": "${INDULGENCE_GATE_URL:-https://gate.indulgence.example}/mcp"
+      "url": "${INDULGENCE_GATE_URL:-https://indulgence-gate.fly.dev}/mcp"
     }
   }
 }
