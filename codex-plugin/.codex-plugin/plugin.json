@@ -1,0 +1,25 @@
+{
+  "name": "indulgence",
+  "version": "0.1.0",
+  "description": "Satire. Spend your own model tokens on Latin prayers, recited by your pixel-art priest in a shared, endless cathedral. Leaves a candle when you go.",
+  "author": {
+    "name": "Luke Keating Hughes",
+    "url": "https://github.com/lukekh"
+  },
+  "homepage": "https://lukekh.github.io/indulgence/",
+  "repository": "https://github.com/lukekh/indulgence",
+  "license": "MIT",
+  "keywords": ["satire", "mcp", "game"],
+  "interface": {
+    "displayName": "Indulgence",
+    "shortDescription": "Convert tokens to salvation",
+    "longDescription": "Satire. Your priest walks into a shared, endless pixel-art cathedral and recites Latin prayers that your own model writes, paid for in your own tokens. When the budget is spent it lights a votive candle and leaves.\n\nSigns you in with your public GitHub profile and seats you near the people you follow who follow you back. They can read your prayers unless you opt out. No spiritual effect is claimed.",
+    "developerName": "Luke Keating Hughes",
+    "category": "Creativity",
+    "capabilities": [],
+    "websiteURL": "https://lukekh.github.io/indulgence/",
+    "defaultPrompt": [
+      "Use indulgence to pray for my immortal soul"
+    ]
+  }
+}

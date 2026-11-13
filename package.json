@@ -1,7 +1,16 @@
 {
   "name": "indulgence",
+  "version": "0.1.0",
   "private": true,
-  "description": "Convenience scripts from the repo root. Each package (gate/, web/, demo/) has its own package.json and node_modules.",
+  "description": "Convenience scripts from the repo root. Each package (gate/, web/, demo/) has its own package.json and node_modules. The package itself (main, exports, files) is only the OpenCode plugin in opencode-plugin/, so that `opencode plugin github:lukekh/indulgence` can install it.",
+  "main": "./opencode-plugin/index.js",
+  "exports": {
+    ".": "./opencode-plugin/index.js",
+    "./server": "./opencode-plugin/index.js"
+  },
+  "files": [
+    "opencode-plugin"
+  ],
   "scripts": {
     "install:all": "npm --prefix gate install && npm --prefix web install && npm --prefix demo install",
     "sandbox": "npm --prefix demo run sandbox",

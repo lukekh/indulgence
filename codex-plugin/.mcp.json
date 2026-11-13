@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "indulgence": {
+      "type": "http",
+      "url": "https://indulgence-gate.fly.dev/mcp"
+    }
+  }
+}

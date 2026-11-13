@@ -28,8 +28,11 @@ export interface Agent {
   setup: Step[];
   /** What to tell it then, typed inside the agent. */
   pray: string[];
-  /** Another way in, shown after the first: its own steps, and what to tell the agent then. */
-  alternative?: { setup: Step[]; prayLead: string; pray: string[] };
+  /**
+   * Another way in, folded away under `summary` after the first: its own steps, and what to
+   * tell the agent then.
+   */
+  alternative?: { summary: string; setup: Step[]; prayLead: string; pray: string[] };
 }
 
 const OPENING = 'If you would like to convert tokens to salvation then';
@@ -49,6 +52,7 @@ export function agents(gate: string): Agent[] {
       // Without the plugin: the gate as a plain MCP server. There is no /indulgence command
       // then, so the prayer is asked for in words, as with the other agents.
       alternative: {
+        summary: 'Or connect without the plugin',
         setup: [
           { before: '', accent: 'For Claude Code', after: ', in your terminal run', prompt: 'shell', lines: [`claude mcp add --transport http indulgence ${mcp}`] },
           { before: 'Then inside ', accent: 'Claude Code', after: ' sign in with', prompt: 'agent', lines: ['/mcp'] },
@@ -61,25 +65,49 @@ export function agents(gate: string): Agent[] {
       id: 'codex',
       name: 'Codex',
       colour: '#ffffff', // OpenAI's mark is black or white
-      setup: [inTerminal('Codex', [`codex mcp add indulgence --url ${mcp}`, 'codex mcp login indulgence'])],
-      pray: [PROMPT],
+      // The plugin (codex-plugin/): the gate as an MCP server, and a skill that knows the rite.
+      setup: [inTerminal('Codex', ['codex plugin marketplace add lukekh/indulgence', 'codex plugin add indulgence@indulgence', 'codex mcp login indulgence'])],
+      pray: ['Use indulgence to pray for my immortal soul'],
+      alternative: {
+        summary: 'Or connect without the plugin',
+        setup: [{ before: '', accent: 'For Codex', after: ', in your terminal run', prompt: 'shell', lines: [`codex mcp add indulgence --url ${mcp}`, 'codex mcp login indulgence'] }],
+        prayLead: 'and pray using',
+        pray: [PROMPT],
+      },
     },
     {
       id: 'gemini',
       name: 'Gemini',
       colour: '#4285f4', // Google blue
+      // The extension (gemini-extension.json and commands/ at the repo root).
       setup: [
-        inTerminal('Gemini', [`gemini mcp add --transport http indulgence ${mcp}`]),
+        inTerminal('Gemini', ['gemini extensions install https://github.com/lukekh/indulgence']),
         { before: 'Then inside ', accent: 'the Gemini CLI', after: ' run', prompt: 'agent', lines: ['/mcp auth indulgence'] },
       ],
-      pray: [PROMPT],
+      pray: ['/indulgence pray for my immortal soul'],
+      alternative: {
+        summary: 'Or connect without the extension',
+        setup: [
+          { before: '', accent: 'For Gemini', after: ', in your terminal run', prompt: 'shell', lines: [`gemini mcp add --transport http indulgence ${mcp}`] },
+          { before: 'Then inside ', accent: 'the Gemini CLI', after: ' run', prompt: 'agent', lines: ['/mcp auth indulgence'] },
+        ],
+        prayLead: 'and pray using',
+        pray: [PROMPT],
+      },
     },
     {
       id: 'opencode',
       name: 'OpenCode',
       colour: '#ffffff', // as is OpenCode's
-      setup: [inTerminal('OpenCode', [`opencode mcp add indulgence --url ${mcp}`, 'opencode mcp auth indulgence'])],
-      pray: [PROMPT],
+      // The plugin (opencode-plugin/): it adds the gate and an /indulgence command to OpenCode's config.
+      setup: [inTerminal('OpenCode', ['opencode plugin add github:lukekh/indulgence', 'opencode mcp auth indulgence'])],
+      pray: ['/indulgence pray for my immortal soul'],
+      alternative: {
+        summary: 'Or connect without the plugin',
+        setup: [{ before: '', accent: 'For OpenCode', after: ', in your terminal run', prompt: 'shell', lines: [`opencode mcp add indulgence --url ${mcp}`, 'opencode mcp auth indulgence'] }],
+        prayLead: 'and pray using',
+        pray: [PROMPT],
+      },
     },
   ];
 }
@@ -187,6 +215,8 @@ export function setUpLanding(gate: string, doc: Document = document): Landing {
       alt.hidden = !other;
       alt.open = false;
       if (other) {
+        const summary = alt.querySelector('summary');
+        if (summary) summary.textContent = other.summary;
         const lead = doc.createElement('p');
         lead.textContent = other.prayLead;
         altBody.replaceChildren(...steps(other.setup), lead, block(doc, other.pray, 'agent', `What to tell ${agent.name}`));

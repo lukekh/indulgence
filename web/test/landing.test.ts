@@ -27,27 +27,44 @@ describe('the welcome', () => {
     ]);
     expect(other.pray.join(' ')).toContain('pray for my immortal soul');
     expect(other.pray.join(' ')).not.toContain('/indulgence'); // there is no such command without the plugin
-    for (const a of list.slice(1)) expect(a.alternative).toBeUndefined();
   });
 
-  it("points every other agent at this gate's MCP endpoint, from the terminal", () => {
-    for (const a of list.slice(1)) {
-      expect(a.setup[0]!.prompt).toBe('shell');
-      expect(a.setup[0]!.lines[0]).toContain('https://gate.test/mcp');
-      expect(a.setup[0]!.lines[0]).toContain('indulgence');
-      expect(a.pray.join(' ')).toContain('pray for my immortal soul');
-    }
+  it('installs the Codex plugin from this repo, with plain MCP as the other way', () => {
+    const codex = list.find((a) => a.id === 'codex')!;
+    expect(codex.setup).toHaveLength(1);
+    expect(codex.setup[0]!.prompt).toBe('shell');
+    expect(codex.setup[0]!.lines).toEqual(['codex plugin marketplace add lukekh/indulgence', 'codex plugin add indulgence@indulgence', 'codex mcp login indulgence']);
+    expect(codex.alternative!.setup[0]!.lines[0]).toBe('codex mcp add indulgence --url https://gate.test/mcp');
   });
 
-  it('splits Gemini in two: one command in the terminal, then one inside the Gemini CLI', () => {
+  it('installs the Gemini extension from this repo, signs in inside the Gemini CLI, and prays with its command', () => {
     const gemini = list.find((a) => a.id === 'gemini')!;
     expect(gemini.setup.map((s) => [s.prompt, s.lines])).toEqual([
-      ['shell', ['gemini mcp add --transport http indulgence https://gate.test/mcp']],
+      ['shell', ['gemini extensions install https://github.com/lukekh/indulgence']],
       ['agent', ['/mcp auth indulgence']],
     ]);
     expect(gemini.setup[0]!.after).toBe(', in your terminal run');
     const second = gemini.setup[1]!;
     expect(second.before + second.accent + second.after).toBe('Then inside the Gemini CLI run');
+    expect(gemini.pray).toEqual(['/indulgence pray for my immortal soul']);
+    expect(gemini.alternative!.setup[0]!.lines[0]).toBe('gemini mcp add --transport http indulgence https://gate.test/mcp');
+  });
+
+  it('installs the OpenCode plugin from this repo and prays with its command, with plain MCP as the other way', () => {
+    const opencode = list.find((a) => a.id === 'opencode')!;
+    expect(opencode.setup.map((s) => [s.prompt, s.lines])).toEqual([['shell', ['opencode plugin add github:lukekh/indulgence', 'opencode mcp auth indulgence']]]);
+    expect(opencode.pray).toEqual(['/indulgence pray for my immortal soul']);
+    expect(opencode.alternative!.setup[0]!.lines[0]).toBe('opencode mcp add indulgence --url https://gate.test/mcp');
+  });
+
+  it("gives every agent another way in, through this gate's MCP endpoint and a prayer in words", () => {
+    for (const a of list) {
+      const other = a.alternative!;
+      expect(other.summary).toMatch(/^Or connect without the (plugin|extension)$/);
+      expect(other.setup[0]!.lines[0]).toContain('https://gate.test/mcp');
+      expect(other.pray.join(' ')).toContain('pray for my immortal soul');
+      expect(other.pray.join(' ')).not.toContain('/indulgence');
+    }
   });
 
   it('marks a terminal command with $ and one typed inside an agent with >, and a slash command is never a terminal one', () => {
