@@ -451,18 +451,29 @@ fn delete_viewer_rows(ctx: &ReducerContext, identity: Identity, priest_id: u64) 
     ctx.db.prayer_text_store().viewer().delete(identity);
 }
 
-/// Place a candle on the nearest stand with a free slot. Returns its id.
+/// Place a candle on the priest's own stand, or on the one across its bay if that is full.
+/// If both are full it takes the place of the candle that would burn out next, which is
+/// removed (see `geometry::place_candle`). Returns the new candle's id.
 fn light_candle(ctx: &ReducerContext, session: &Session, priest: &Priest, label: String) -> u64 {
     let primary = geometry::primary_arcade(priest.bay, priest.half);
-    let mut target = None;
-    for arcade in geometry::arcade_search_order(primary, priest.x).take(1_000_000) {
-        let used: HashSet<u8> = ctx.db.candle().arcade().filter(arcade).map(|c| c.slot).collect();
-        if let Some(slot) = geometry::lowest_free_slot(&used) {
-            target = Some((arcade, slot));
-            break;
-        }
+    let other = geometry::other_arcade(priest.bay, priest.half);
+    let burning: Vec<geometry::Burning> = [primary, other]
+        .into_iter()
+        .flat_map(|arcade| ctx.db.candle().arcade().filter(arcade))
+        .map(|c| geometry::Burning {
+            candle_id: c.candle_id,
+            arcade: c.arcade,
+            slot: c.slot,
+            lit: c.lit_at <= ctx.timestamp,
+            expires_micros: c.expires_at.to_micros_since_unix_epoch(),
+        })
+        .collect();
+    let Some(place) = geometry::place_candle(primary, other, &burning, &mut CtxRng(ctx)) else { return 0 };
+    if let Some(old) = place.replaces {
+        ctx.db.candle().candle_id().delete(old);
+        ctx.db.candle_owner().candle_id().delete(old);
     }
-    let Some((arcade, slot)) = target else { return 0 };
+    let (arcade, slot) = (place.arcade, place.slot);
     let tier = geometry::spend_tier(session.spent);
     let lit_at = ctx.timestamp + ms(c::CANDLE_LIT_AFTER_MS);
     let (x, y) = geometry::slot_pos(arcade, slot);
@@ -841,7 +852,8 @@ pub fn depart(ctx: &ReducerContext, session_id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Delete the account and every row that refers to it.
+/// Delete the account and every row that refers to it, except the candles it has lit:
+/// those stay on their stands, with the name written on them, until they burn out.
 #[spacetimedb::reducer]
 pub fn forget(ctx: &ReducerContext, gh_hash: String) -> Result<(), String> {
     require_gate(ctx)?;
@@ -855,11 +867,9 @@ pub fn forget(ctx: &ReducerContext, gh_hash: String) -> Result<(), String> {
             delete_viewer_rows(ctx, identity, priest_id);
             ctx.db.session().session_id().delete(&id);
         }
-        let candles: Vec<u64> = ctx.db.candle_owner().identity().filter(identity).map(|o| o.candle_id).collect();
-        for id in candles {
-            ctx.db.candle().candle_id().delete(id);
-            ctx.db.candle_owner().candle_id().delete(id);
-        }
+        // Candles already lit are not put out: they burn until `expire_candles` takes them.
+        // Only the private record of whose they are goes, so nothing ties them to an account.
+        ctx.db.candle_owner().identity().delete(identity);
         ctx.db.viewer_label_store().viewer().delete(identity);
         ctx.db.prayer_text_store().viewer().delete(identity);
         ctx.db.account().identity().delete(identity);

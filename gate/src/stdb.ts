@@ -162,6 +162,12 @@ export class StdbStore implements Store {
     });
   }
 
+  occupiedXs(): number[] {
+    const xs: number[] = [];
+    for (const p of this.conn.db.priest.iter()) if (p.state.tag !== 'Departing') xs.push(p.x);
+    return xs;
+  }
+
   disconnect() {
     this.conn.disconnect();
   }

@@ -428,9 +428,9 @@ async function main() {
       };
       await notice('button[data-open="repudiationes"]', 1800);
       await notice('button[data-lang="en"]', 1500);
-      await viewer.locator('[data-close]').click();
+      await viewer.locator('#notice').press('Escape');
       await notice('button[data-open="merita"]', 1800);
-      await viewer.locator('[data-close]').click();
+      await viewer.locator('#notice').press('Escape');
       await hover({ x: box.x + 40, y: box.y + 40 }, 300);
     }
 

@@ -92,18 +92,55 @@ pub fn target_row(q: f64) -> u8 {
 /// Without mutuals (or if every candidate bay is full) the first bay in the order
 /// 0, 1, −1, … with fewer than `BAY_SOFT_CAP` live priests is used: a random free seat in
 /// row round(3(1 − q)), else the nearest row with a free seat.
+///
+/// That seat is only a candidate. A second pass (`clear_seat`) then moves the priest, within
+/// the same bay, to the nearest seat where the words over its head will not run into a
+/// neighbour's.
 pub fn choose_seat(
     mutuals: &[Pos],
     q: f64,
     occupied: &mut dyn FnMut(i32) -> HashSet<SeatAddr>,
     rng: &mut dyn Rand,
 ) -> Option<SeatAddr> {
-    if !mutuals.is_empty() {
-        if let Some(seat) = choose_near_mutuals(mutuals, q, occupied, rng) {
-            return Some(seat);
-        }
+    let candidate = if mutuals.is_empty() { None } else { choose_near_mutuals(mutuals, q, occupied, rng) }
+        .or_else(|| choose_without_mutuals(q, occupied, rng))?;
+    let taken = occupied(candidate.bay);
+    Some(clear_seat(candidate, &taken, rng))
+}
+
+/// How far apart two priests in the same row must sit for their prayers not to collide:
+/// a line of prayer is usually five to seven tiles wide, centred over the priest's head.
+pub const PRAYER_CLEAR_X: i32 = 8;
+/// And in the next row: the words of the priest behind are written across the row in front,
+/// so nobody sits within this many tiles to either side, directly in front or behind.
+pub const PRAYER_CLEAR_NEXT_ROW_X: i32 = 4;
+
+/// Whether the prayers of priests at `a` and `b` are likely to run into each other.
+pub fn crowds(a: Pos, b: Pos) -> bool {
+    let dx = (a.0 - b.0).abs();
+    let rows = (a.1 - b.1).abs() / c::PEW_STEP_Y as i32;
+    match rows {
+        0 => dx < PRAYER_CLEAR_X,
+        1 => dx < PRAYER_CLEAR_NEXT_ROW_X,
+        _ => false,
     }
-    choose_without_mutuals(q, occupied, rng)
+}
+
+/// The second pass of seating. Among the free seats of the candidate's bay, take one that
+/// crowds the fewest priests already seated there (none, while the bay has room), and of
+/// those the nearest to the candidate; ties at random. A candidate that crowds nobody
+/// stays where it is.
+pub fn clear_seat(candidate: SeatAddr, taken: &HashSet<SeatAddr>, rng: &mut dyn Rand) -> SeatAddr {
+    let seated: Vec<Pos> = taken.iter().map(|s| seat_pos(*s)).collect();
+    let from = seat_pos(candidate);
+    let key = |s: &SeatAddr| -> (usize, i32) {
+        let p = seat_pos(*s);
+        (seated.iter().filter(|o| crowds(p, **o)).count(), manhattan(p, from))
+    };
+    let free: Vec<SeatAddr> = bay_seats(candidate.bay).filter(|s| !taken.contains(s)).collect();
+    let Some(best) = free.iter().map(key).min() else { return candidate };
+    let ties: Vec<SeatAddr> = free.into_iter().filter(|s| key(s) == best).collect();
+    ties[rng.below(ties.len())]
 }
 
 /// Video only (`INDULGENCE_VIDEO_SEATING=1` at build time, see build.rs): a seat with no
@@ -217,19 +254,54 @@ pub fn slot_pos(arcade: i32, slot: u8) -> Pos {
     (stand_x(arcade), y)
 }
 
-/// Arcades to try, starting with the primary one and moving outward; at each step the
-/// arcade nearer to the priest (by x) is tried first.
-pub fn arcade_search_order(primary: i32, priest_x: i32) -> impl Iterator<Item = i32> {
-    std::iter::once(primary).chain((1..).flat_map(move |r: i32| {
-        let mut pair = [primary - r, primary + r];
-        pair.sort_by_key(|a| ((stand_x(*a) - priest_x).abs(), *a));
-        pair
-    }))
+/// The stand on the other side of a priest's bay from the one it walks to first.
+pub fn other_arcade(bay: i32, half: u8) -> i32 {
+    if half == LEFT { bay + 1 } else { bay }
 }
 
-/// Lowest free slot index on a stand, given the slots in use.
-pub fn lowest_free_slot(used: &HashSet<u8>) -> Option<u8> {
-    (0..STAND_SLOTS).find(|s| !used.contains(s))
+/// A candle on one of a bay's two stands, as far as choosing a place for a new one goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Burning {
+    pub candle_id: u64,
+    pub arcade: i32,
+    pub slot: u8,
+    /// False while the priest who placed it is still walking over to light it.
+    pub lit: bool,
+    pub expires_micros: i64,
+}
+
+/// Where a new candle goes, and which candle (if any) it takes the place of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CandlePlace {
+    pub arcade: i32,
+    pub slot: u8,
+    pub replaces: Option<u64>,
+}
+
+/// Choose a place for a new candle: a free slot on the priest's own stand, picked at random
+/// so a stand fills here and there rather than in a row; if that stand is full, a free slot
+/// on the stand across the bay; and if both are full, the place of whichever candle on
+/// either stand will burn out next. A candle that
+/// is still being lit is passed over while any lit one remains, so nobody arrives at a
+/// stand to find their place taken. Ties go to the priest's own stand, then the lower slot.
+pub fn place_candle(primary: i32, other: i32, burning: &[Burning], rng: &mut impl Rand) -> Option<CandlePlace> {
+    for arcade in [primary, other] {
+        let used: HashSet<u8> = burning.iter().filter(|c| c.arcade == arcade).map(|c| c.slot).collect();
+        let free = free_slots(&used);
+        if !free.is_empty() {
+            return Some(CandlePlace { arcade, slot: free[rng.below(free.len())], replaces: None });
+        }
+    }
+    burning
+        .iter()
+        .filter(|c| c.arcade == primary || c.arcade == other)
+        .min_by_key(|c| (!c.lit, c.expires_micros, c.arcade != primary, c.slot))
+        .map(|c| CandlePlace { arcade: c.arcade, slot: c.slot, replaces: Some(c.candle_id) })
+}
+
+/// The free slots on a stand, lowest first, given the slots in use.
+pub fn free_slots(used: &HashSet<u8>) -> Vec<u8> {
+    (0..STAND_SLOTS).filter(|s| !used.contains(s)).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -339,15 +411,17 @@ mod tests {
     fn falls_back_to_nearest_row_with_space() {
         let mut w = World::default();
         let mut rng = TestRng(11);
+        // The first pass alone: the candidate is in the target row until that row is full.
         for who in 0..16 {
-            let s = w.seat(who, &[], 1.0, &mut rng);
+            let s = choose_without_mutuals(1.0, &mut w.occupied(), &mut rng).expect("seat");
             assert_eq!(s.row, 0);
+            w.seats.insert(s, who);
         }
-        assert_eq!(w.seat(99, &[], 1.0, &mut rng).row, 1);
+        assert_eq!(choose_without_mutuals(1.0, &mut w.occupied(), &mut rng).expect("seat").row, 1);
     }
 
     #[test]
-    fn mutual_newcomer_sits_next_to_friend_in_same_bay() {
+    fn mutual_newcomer_sits_near_friend_in_same_bay() {
         let mut rng = TestRng(42);
         for seed_q in [0.0, 0.3, 0.7, 1.0] {
             let mut w = World::default();
@@ -358,8 +432,74 @@ mod tests {
             let a = w.seat(100, &[], seed_q, &mut rng);
             let b = w.seat(101, &[100], 1.0 - seed_q, &mut rng);
             assert_eq!(a.bay, b.bay, "mutuals must share a bay");
-            assert!(manhattan(seat_pos(a), seat_pos(b)) <= 2);
+            assert!(!crowds(seat_pos(a), seat_pos(b)), "but not so close that their prayers collide");
         }
+    }
+
+    #[test]
+    fn prayers_collide_only_when_close() {
+        let at = |x: i32, row: usize| (x, c::ROW_Y[row] as i32);
+        // The same row: eight tiles apart is clear, seven is not.
+        assert!(crowds(at(8, 2), at(15, 2)));
+        assert!(!crowds(at(8, 2), at(16, 2)));
+        // The next row, in front or behind: four tiles to the side is clear.
+        assert!(crowds(at(10, 2), at(13, 3)));
+        assert!(crowds(at(10, 3), at(10, 2)));
+        assert!(!crowds(at(10, 2), at(14, 3)));
+        // Two rows apart never collide.
+        assert!(!crowds(at(10, 2), at(10, 4)));
+    }
+
+    #[test]
+    fn second_pass_moves_a_crowded_candidate_to_the_nearest_clear_seat() {
+        let mut rng = TestRng(7);
+        let friend = SeatAddr { bay: 3, row: 4, half: LEFT, i: 2 };
+        let taken: HashSet<SeatAddr> = [friend].into_iter().collect();
+        // Right beside the friend: moved, but only as far as it takes, and in the same bay.
+        let beside = SeatAddr { bay: 3, row: 4, half: LEFT, i: 3 };
+        for _ in 0..50 {
+            let s = clear_seat(beside, &taken, &mut rng);
+            assert_eq!(s.bay, 3);
+            assert!(!taken.contains(&s));
+            assert!(!crowds(seat_pos(s), seat_pos(friend)));
+            assert_eq!(manhattan(seat_pos(s), seat_pos(beside)), 4, "two rows in front or behind: {s:?}");
+        }
+        // A candidate that crowds nobody is left alone.
+        let far = SeatAddr { bay: 3, row: 0, half: RIGHT, i: 6 };
+        assert_eq!(clear_seat(far, &taken, &mut rng), far);
+        // Priests in other bays do not count.
+        let elsewhere: HashSet<SeatAddr> = HashSet::new();
+        assert_eq!(clear_seat(beside, &elsewhere, &mut rng), beside);
+    }
+
+    #[test]
+    fn the_first_priests_in_a_bay_never_have_colliding_prayers() {
+        let mut rng = TestRng(2024);
+        for _ in 0..30 {
+            let mut w = World::default();
+            // (About a dozen fit this way; after that some overlap cannot be helped.)
+            for who in 0..8 {
+                w.seat(who, &[], (rng.below(101) as f64) / 100.0, &mut rng);
+            }
+            let seats: Vec<SeatAddr> = w.seats.keys().copied().collect();
+            for (i, a) in seats.iter().enumerate() {
+                assert_eq!(a.bay, 0);
+                for b in &seats[i + 1..] {
+                    assert!(!crowds(seat_pos(*a), seat_pos(*b)), "{a:?} crowds {b:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_crowded_bay_still_seats_everyone_with_as_little_overlap_as_it_can() {
+        let mut rng = TestRng(11);
+        let mut w = World::default();
+        for who in 0..c::BAY_SOFT_CAP as usize {
+            let s = w.seat(who, &[], 0.5, &mut rng);
+            assert_eq!(s.bay, 0, "the bay fills to its cap before the next is used");
+        }
+        assert_eq!(w.seat(1000, &[], 0.5, &mut rng).bay, 1);
     }
 
     #[test]
@@ -407,8 +547,10 @@ mod tests {
                     if near_free {
                         checked += 1;
                         let me = w.pos_of(who);
-                        let nearest = mutuals.iter().map(|m| manhattan(me, w.pos_of(*m))).min().unwrap();
-                        assert!(nearest <= 4, "trial {trial}: nearest mutual {nearest} tiles away");
+                        // The candidate seat is within 4 tiles of a mutual, so in that mutual's
+                        // bay or the one beside it; the second pass never leaves that bay.
+                        let nearest = mutuals.iter().map(|m| (bay_of_x(me.0) - bay_of_x(w.pos_of(*m).0)).abs()).min().unwrap();
+                        assert!(nearest <= 1, "trial {trial}: nearest mutual {nearest} bays away");
                     }
                     groups[g].push(who);
                 } else {
@@ -431,8 +573,6 @@ mod tests {
             w.seat(101, &[100], 0.9, &mut rng);
             w.seat(102, &[100, 101], 0.5, &mut rng);
             let me = w.seat(103, &[100, 101, 102], 0.1, &mut rng);
-            let p = seat_pos(me);
-            assert!([100, 101, 102].iter().any(|m| manhattan(p, w.pos_of(*m)) <= 4));
             assert!([100, 101, 102].iter().all(|m| bay_of_x(w.pos_of(*m).0) == me.bay));
         }
     }
@@ -450,8 +590,7 @@ mod tests {
         for _ in 0..20 {
             let me = w.seat(9999, &[1, 2], 0.5, &mut rng);
             let p = seat_pos(me);
-            let nearest = [1, 2].iter().map(|m| manhattan(p, w.pos_of(*m))).min().unwrap();
-            assert!(nearest <= 4, "newcomer {nearest} tiles from both friends");
+            assert!([0, 2].contains(&bay_of_x(p.0)), "newcomer in bay {}, between its friends", bay_of_x(p.0));
             w.seats.remove(&me);
         }
     }
@@ -485,13 +624,67 @@ mod tests {
         assert_eq!(stand_x(-1), -28);
         assert_eq!(slot_pos(0, 0), (2, 7));
         assert_eq!(slot_pos(0, 9).1, 11);
-        // A right-half priest in bay 0 (x = 22) goes to arcade 1, then 0, 2, -1, 3.
-        let order: Vec<i32> = arcade_search_order(1, 22).take(5).collect();
-        assert_eq!(order, vec![1, 0, 2, -1, 3]);
+        assert_eq!(other_arcade(3, LEFT), 4);
+        assert_eq!(other_arcade(3, RIGHT), 3);
         let mut used: HashSet<u8> = (0..STAND_SLOTS).collect();
-        assert_eq!(lowest_free_slot(&used), None);
+        assert!(free_slots(&used).is_empty());
         used.remove(&17);
-        assert_eq!(lowest_free_slot(&used), Some(17));
+        used.remove(&3);
+        assert_eq!(free_slots(&used), vec![3, 17]);
+    }
+
+    #[test]
+    fn a_new_candle_finds_a_place() {
+        let candle = |id: u64, arcade: i32, slot: u8, expires: i64| Burning { candle_id: id, arcade, slot, lit: true, expires_micros: expires };
+        let full = |arcade: i32, first_id: u64| -> Vec<Burning> {
+            (0..STAND_SLOTS).map(|s| candle(first_id + s as u64, arcade, s, 1_000 + s as i64)).collect()
+        };
+        let mut rng = TestRng(0x9E3779B97F4A7C15);
+
+        // An empty stand: somewhere on the priest's own, and not always the same place.
+        let mut seen = HashSet::new();
+        for _ in 0..400 {
+            let p = place_candle(1, 0, &[], &mut rng).unwrap();
+            assert_eq!((p.arcade, p.replaces), (1, None));
+            assert!(p.slot < STAND_SLOTS);
+            seen.insert(p.slot);
+        }
+        assert_eq!(seen.len(), STAND_SLOTS as usize, "every slot is used sooner or later");
+
+        // Filling a stand one candle at a time never puts two in one slot, and takes all 40
+        // before any goes to the other side.
+        let mut stand: Vec<Burning> = Vec::new();
+        for i in 0..STAND_SLOTS as u64 {
+            let p = place_candle(1, 0, &stand, &mut rng).unwrap();
+            assert_eq!((p.arcade, p.replaces), (1, None));
+            assert!(stand.iter().all(|c| c.slot != p.slot));
+            stand.push(candle(i, 1, p.slot, 1_000 + i as i64));
+        }
+        let first_order: Vec<u8> = stand.iter().map(|c| c.slot).collect();
+        assert_ne!(first_order, (0..STAND_SLOTS).collect::<Vec<u8>>(), "not filled in a row");
+
+        // Its own stand full: the other side of the bay, not a stand further off.
+        let p = place_candle(1, 0, &stand, &mut rng).unwrap();
+        assert_eq!((p.arcade, p.replaces), (0, None));
+        // One slot left there: that one.
+        let mut nearly: Vec<Burning> = stand.clone();
+        nearly.extend(full(0, 200).into_iter().filter(|c| c.slot != 23));
+        assert_eq!(place_candle(1, 0, &nearly, &mut rng), Some(CandlePlace { arcade: 0, slot: 23, replaces: None }));
+
+        // Both full: the place of the candle that will burn out next, on either stand.
+        let mut both: Vec<Burning> = full(1, 100).into_iter().chain(full(0, 200)).collect();
+        both[57].expires_micros = 7; // arcade 0, slot 17
+        assert_eq!(place_candle(1, 0, &both, &mut rng), Some(CandlePlace { arcade: 0, slot: 17, replaces: Some(217) }));
+        // A candle still being lit is passed over, even if it would be next.
+        both[57].lit = false;
+        assert_eq!(place_candle(1, 0, &both, &mut rng), Some(CandlePlace { arcade: 1, slot: 0, replaces: Some(100) }));
+        // A tie goes to the priest's own stand.
+        let tied: Vec<Burning> = both.iter().map(|c| Burning { lit: true, expires_micros: 9, ..*c }).collect();
+        assert_eq!(place_candle(1, 0, &tied, &mut rng), Some(CandlePlace { arcade: 1, slot: 0, replaces: Some(100) }));
+        assert_eq!(place_candle(0, 1, &tied, &mut rng), Some(CandlePlace { arcade: 0, slot: 0, replaces: Some(200) }));
+        // Candles on other stands never count.
+        let p = place_candle(5, 6, &both, &mut rng).unwrap();
+        assert_eq!((p.arcade, p.replaces), (5, None));
     }
 
     #[test]

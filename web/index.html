@@ -38,6 +38,35 @@
       button.link[aria-pressed='true'] { color: var(--gold); }
       button.link[aria-pressed='true']:hover { color: var(--crimson); }
 
+      /* The welcome for a visitor without a link, over a bay of the cathedral. */
+      #landing { position: fixed; left: 50%; top: 47%; transform: translate(-50%, -50%); width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 84px); box-sizing: border-box; overflow-y: auto; padding: 22px 26px 16px; border: 1px solid rgba(160, 154, 142, 0.38); background: rgba(8, 8, 8, 0.86); color: var(--text); font: 18px/1.5 var(--face); text-align: center; }
+      #landing[hidden] { display: none; }
+      #landing h1 { margin: 2px 0 0; font-size: clamp(44px, 9vw, 68px); line-height: 1.05; font-weight: 600; color: var(--gold); text-shadow: 0 0 6px rgba(222, 180, 89, 0.55), 0 0 16px rgba(222, 180, 89, 0.3); }
+      #landing .motto { margin: 2px 0 14px; font-size: clamp(19px, 3.6vw, 24px); font-weight: 500; color: var(--gold); text-shadow: 0 0 6px rgba(222, 180, 89, 0.45); }
+      #landing p { margin: 10px 0; }
+      #landing .alt { margin: 12px 0 0; }
+      #landing .alt[hidden] { display: none; }
+      #landing .alt summary { cursor: pointer; color: var(--dim); font-size: 16px; font-weight: 600; list-style-position: inside; }
+      #landing .alt summary:hover, #landing .alt summary:focus-visible, #landing .alt[open] summary { color: var(--agent, var(--gold)); }
+      #landing .where { color: var(--agent, var(--gold)); }
+      #landing .small { color: var(--dim); font-size: 16px; margin-top: 14px; }
+      #landing a { color: var(--text); text-decoration-color: rgba(222, 180, 89, 0.6); }
+      #landing a:hover { color: var(--crimson); }
+      #landing .tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; margin: 0 0 6px; border-bottom: 1px solid rgba(160, 154, 142, 0.22); }
+      #landing .tab { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px 7px; color: var(--dim); font: inherit; font-size: 17px; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      #landing .tab svg { width: 17px; height: 17px; fill: currentColor; flex: none; }
+      /* Each tab lights up in its own agent's colour (--tab, set by landing.ts): under the mouse, and when chosen. */
+      #landing .tab:hover, #landing .tab:focus-visible { color: var(--tab, var(--gold)); }
+      #landing .tab[aria-selected='true'] { color: var(--tab, var(--gold)); border-bottom-color: var(--tab, var(--gold)); }
+      /* Command blocks: each line is a button that copies itself. */
+      #landing .cmd { display: flex; flex-direction: column; text-align: left; border: 1px solid rgba(160, 154, 142, 0.26); background: rgba(255, 255, 255, 0.035); padding: 5px 0; }
+      #landing .line { all: unset; cursor: copy; display: flex; align-items: baseline; gap: 12px; padding: 4px 12px; color: var(--text); }
+      #landing .line code { flex: 1; min-width: 0; font-family: 'SFMono-Regular', Consolas, Menlo, monospace; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+      #landing .line .mark { flex: none; width: 1ch; font-family: 'SFMono-Regular', Consolas, Menlo, monospace; font-size: 13.5px; line-height: 1.5; color: rgba(160, 154, 142, 0.55); user-select: none; margin-right: -4px; }
+      #landing .line .note { flex: none; font-size: 14px; color: var(--gold); min-width: 0; }
+      #landing .line:hover, #landing .line:focus-visible { background: rgba(222, 180, 89, 0.09); color: var(--gold); }
+      #landing .line.done { color: var(--gold); }
+
       /* The notices: a panel drawn over the cathedral, which stays in view behind it. */
       dialog { width: min(680px, calc(100vw - 32px)); max-height: min(78vh, 760px); box-sizing: border-box; padding: 0; border: 1px solid rgba(160, 154, 142, 0.38); background: rgba(8, 8, 8, 0.9); color: var(--text); font: 17px/1.55 var(--face); overflow: hidden; }
       dialog[open] { display: flex; flex-direction: column; }
@@ -45,7 +74,6 @@
       dialog header { display: flex; align-items: baseline; gap: 18px; padding: 18px 22px 12px; border-bottom: 1px solid rgba(160, 154, 142, 0.22); }
       dialog h2 { margin: 0; flex: 1; font-size: 28px; font-weight: 600; color: var(--gold); text-shadow: 0 0 6px rgba(222, 180, 89, 0.45); }
       dialog .langs { display: flex; gap: 8px; align-items: baseline; font-size: 16px; }
-      dialog .close { font-size: 16px; }
       dialog .body { overflow-y: auto; padding: 6px 22px 20px; }
       dialog .body p { margin: 12px 0; }
       dialog .body b { color: var(--gold); font-weight: 600; }
@@ -61,6 +89,32 @@
   </head>
   <body>
     <canvas id="view" aria-label="An endless cathedral where priests pray in Latin"></canvas>
+
+    <!-- For a visitor who came without a link: what this is and how to send a priest in. -->
+    <section id="landing" aria-labelledby="landing-title" hidden>
+      <h1 id="landing-title">Indulgence</h1>
+      <p class="motto" lang="la">Mea Culpa, Pater</p>
+      <!-- Icons from Simple Icons (CC0); each mark belongs to its owner. -->
+      <div class="tabs" role="tablist" aria-label="Your agent">
+          <button type="button" role="tab" class="tab" data-agent="claude" aria-controls="landing-steps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 10.5h3v3h-3v3h-1.5v3H18v-3h-1.5v3H15v-3H9v3H7.5v-3H6v3H4.5v-3H3v-3H0v-3h3v-6h18Zm-15 0h1.5v-3H6Zm10.5 0H18v-3h-1.5z"/></svg><span>Claude</span></button>
+          <button type="button" role="tab" class="tab" data-agent="codex" aria-controls="landing-steps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg><span>Codex</span></button>
+          <button type="button" role="tab" class="tab" data-agent="gemini" aria-controls="landing-steps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg><span>Gemini</span></button>
+          <button type="button" role="tab" class="tab" data-agent="opencode" aria-controls="landing-steps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 24H2V0h20zM17 4.8H7v14.4h10z"/></svg><span>OpenCode</span></button>
+      </div>
+      <div id="landing-steps" role="tabpanel">
+        <!-- Filled in by landing.ts for the chosen agent: a lead-in and a command block for each step. -->
+        <div data-setup></div>
+        <p>and instruct your virtual priest to pray using</p>
+        <div data-pray></div>
+        <p>and your priest should appear in the infinite digital cathedral. <span lang="la">Deo gratias.</span></p>
+        <!-- Another way in for the chosen agent, if it has one (Claude Code without the plugin): closed until asked for. -->
+        <details data-alt class="alt" hidden>
+          <summary>Or connect without the plugin</summary>
+          <div data-alt-body></div>
+        </details>
+        <p class="small">See <a href="https://github.com/lukekh/indulgence" target="_blank" rel="noopener noreferrer">github.com/lukekh/indulgence</a> for more details.</p>
+      </div>
+    </section>
 
     <nav id="notices" aria-label="Notices">
       <button type="button" class="link" data-open="repudiationes" lang="la">Repudiationes</button>
@@ -78,8 +132,6 @@
           <span class="sep" aria-hidden="true">·</span>
           <button type="button" class="link" data-lang="en" lang="en">English</button>
         </div>
-        <!-- "Claude" is Latin for "close!" -->
-        <button type="button" class="link close" data-close></button>
       </header>
       <div class="body">
         <!-- Disclaimers ------------------------------------------------------------------>
@@ -89,8 +141,8 @@
           <p><b>Textus generatus.</b> Machina tua orationes componit. Latinitas earum vitiosa, insolita aut theologice dubia esse potest.</p>
           <p><b>Gradus in sessione.</b> Hoc modo machina quae sessionem tuam videt orationes scribit. Effluvia manifesta excernuntur, sed nulla omnino excludi possunt. Amici mutui orationes tuas legunt nisi recusaveris; si hoc te angit, recusa (vide Communicationem).</p>
           <p><b>Communicatio.</b> Per se amici mutui in GitHub orationes tuas legere possunt. Ut recuses, mandatum <code>/indulgence --private</code> adhibe (vel <code>share_prayers: false</code> ad <code>begin</code> mitte). Tunc ceteri omnes solum orationes paratas vident, numquam tuas.</p>
-          <p><b>Opus independens.</b> Neque GitHub neque Anthropic neque Clockwork Labs (SpacetimeDB) coniunctum.</p>
-          <p><b>Deletio.</b> Mandatum <code>/indulgence forget</code> rationem tuam, nexus sectatorum, sessiones et candelas delet. Licentiam OAuth quoque in optionibus GitHub tuis quovis tempore revocare potes.</p>
+          <p><b>Opus independens.</b> Neque GitHub neque Anthropic neque Clockwork Labs (SpacetimeDB) neque OpenAI neque Google neque OpenCode coniunctum. Nomina et signa eorum dominorum suorum sunt, hic solum ad instrumenta designanda adhibita.</p>
+          <p><b>Deletio.</b> Mandatum <code>/indulgence delete-account</code> rationem tuam, nexus sectatorum et sessiones delet, postquam in navigatro tuo confirmaveris. Candelae iam accensae cum nomine tuo ardere pergunt, donec exstinguantur (intra biduum). Licentiam OAuth quoque in optionibus GitHub tuis quovis tempore revocare potes.</p>
           <p><b>Secretum.</b> Ignoti sacerdotem sine nomine vident orationes paratas recitantem, et nomina in candelis. Amici mutui nomen tuum vident et orationes tuas legunt. Textus orationum e cathedrali evanescit cum sacerdos tuus discedit; exemplar tuum in machina tua servatur, in <code>~/.claude/indulgence</code>.</p>
         </section>
         <section data-notice="repudiationes" lang="en" data-title="Disclaimers" hidden>
@@ -99,8 +151,8 @@
           <p><b>Generated text.</b> Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.</p>
           <p><b>In-session tier.</b> In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out. Your mutuals can read your prayers unless you opt out, so if that worries you, opt out (see Sharing).</p>
           <p><b>Sharing.</b> By default the people you follow mutually on GitHub can read your prayers. To opt out, run <code>/indulgence --private</code> (or pass <code>share_prayers: false</code> to <code>begin</code>). Then everyone else sees only pre-generated prayer text, never yours.</p>
-          <p><b>Independent project.</b> Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).</p>
-          <p><b>Deletion.</b> <code>/indulgence forget</code> deletes your account, follow edges, sessions and candles. You can also revoke the OAuth app in your GitHub settings at any time.</p>
+          <p><b>Independent project.</b> Not affiliated with GitHub, Anthropic, Clockwork Labs (SpacetimeDB), OpenAI, Google or OpenCode. Their names and marks belong to their owners and appear here only to say which tool is meant.</p>
+          <p><b>Deletion.</b> <code>/indulgence delete-account</code> deletes your account, follow edges and sessions, once you confirm it in your browser. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings at any time.</p>
           <p><b>Privacy.</b> Strangers see an anonymous priest saying canned prayers, plus the names on candles. Your mutuals see your name and read your generated prayers. Prayer text disappears from the cathedral when your priest leaves; your own copy is kept on your machine, in <code>~/.claude/indulgence</code>.</p>
         </section>
 
@@ -114,6 +166,7 @@
           <p><b>Musica.</b> Cantus Gregoriani ex Wikimedia Commons, quibus resonantia ecclesiae cathedralis hic addita est. <a href="https://commons.wikimedia.org/wiki/File:Dies.irae.ogg" target="_blank" rel="noopener noreferrer"><i>Dies irae</i></a> et <a href="https://commons.wikimedia.org/wiki/File:Improperia.ogg" target="_blank" rel="noopener noreferrer"><i>Improperia</i></a>, a Membeth cantata et in dominium publicum data; <a href="https://commons.wikimedia.org/wiki/File:Lamentation.III.Karsamstag.ogg" target="_blank" rel="noopener noreferrer"><i>Lamentatio III Sabbati Sancti</i></a>, a Membeth, sub CC0. <a href="https://commons.wikimedia.org/wiki/File:Pueri_hebraeorum,_portantes_ramos_olivarum.ogg" target="_blank" rel="noopener noreferrer"><i>Pueri Hebraeorum portantes</i></a> et <a href="https://commons.wikimedia.org/wiki/File:Pueri_hebraeorum,_vestimenta.ogg" target="_blank" rel="noopener noreferrer"><i>Pueri Hebraeorum vestimenta</i></a>, ab Adabo60ge, sub licentia <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 3.0</a>; versiones hic mutatae sub eadem licentia offeruntur. Introitus <a href="https://commons.wikimedia.org/wiki/File:The_Tudor_Consort_-_02_-_Introit_-_Resurrexi_et_Adhuc_Tecum_Sum.ogg" target="_blank" rel="noopener noreferrer"><i>Resurrexi</i></a>, a The Tudor Consort, sub licentia <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>.</p>
           <p><b>Verba.</b> Index verborum Latinorum ex <a href="https://ebible.org/find/details.php?id=latVUC" target="_blank" rel="noopener noreferrer">Vulgata Clementina</a> (in dominio publico, per eBible.org). Index verborum vetitorum ex <a href="https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words" target="_blank" rel="noopener noreferrer">LDNOOBW</a>, sub licentia CC BY 4.0.</p>
           <p><b>Programmata.</b> <a href="https://github.com/clockworklabs/SpacetimeDB" target="_blank" rel="noopener noreferrer">SpacetimeDB</a> a Clockwork Labs (bibliotheca TypeScript sub ISC, crate Rust sub Apache 2.0); <a href="https://github.com/modelcontextprotocol/typescript-sdk" target="_blank" rel="noopener noreferrer">Model Context Protocol TypeScript SDK</a> (MIT); <a href="https://github.com/panva/jose" target="_blank" rel="noopener noreferrer">jose</a> a Filip Skokan (MIT); <a href="https://expressjs.com" target="_blank" rel="noopener noreferrer">Express</a> (MIT); <a href="https://vite.dev" target="_blank" rel="noopener noreferrer">Vite</a> (MIT). Ad demonstrationem: <a href="https://playwright.dev" target="_blank" rel="noopener noreferrer">Playwright</a> a Microsoft (Apache 2.0) et <a href="https://ffmpeg.org" target="_blank" rel="noopener noreferrer">FFmpeg</a>.</p>
+          <p><b>Signa.</b> Signa instrumentorum in pagina prima ex <a href="https://simpleicons.org" target="_blank" rel="noopener noreferrer">Simple Icons</a> (CC0).</p>
           <p><b>Fulgor aureus.</b> Fulgor litterarum aurearum ex TuringOS mutuatus est.</p>
           <p class="small">Codex huius operis sub licentia MIT.</p>
         </section>
@@ -126,6 +179,7 @@
           <p><b>Music.</b> Gregorian chant from Wikimedia Commons, with the cathedral reverb added here. The <a href="https://commons.wikimedia.org/wiki/File:Dies.irae.ogg" target="_blank" rel="noopener noreferrer"><i>Dies irae</i></a> and the <a href="https://commons.wikimedia.org/wiki/File:Improperia.ogg" target="_blank" rel="noopener noreferrer"><i>Improperia</i></a>, recorded by Membeth and released into the public domain; <a href="https://commons.wikimedia.org/wiki/File:Lamentation.III.Karsamstag.ogg" target="_blank" rel="noopener noreferrer"><i>Lamentation III for Holy Saturday</i></a>, by Membeth, under CC0. <a href="https://commons.wikimedia.org/wiki/File:Pueri_hebraeorum,_portantes_ramos_olivarum.ogg" target="_blank" rel="noopener noreferrer"><i>Pueri Hebraeorum portantes</i></a> and <a href="https://commons.wikimedia.org/wiki/File:Pueri_hebraeorum,_vestimenta.ogg" target="_blank" rel="noopener noreferrer"><i>Pueri Hebraeorum vestimenta</i></a>, by Adabo60ge, under <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 3.0</a>; the altered versions here are offered under the same licence. The introit <a href="https://commons.wikimedia.org/wiki/File:The_Tudor_Consort_-_02_-_Introit_-_Resurrexi_et_Adhuc_Tecum_Sum.ogg" target="_blank" rel="noopener noreferrer"><i>Resurrexi</i></a>, by The Tudor Consort, under <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>.</p>
           <p><b>Words.</b> The Latin wordlist comes from the <a href="https://ebible.org/find/details.php?id=latVUC" target="_blank" rel="noopener noreferrer">Clementine Vulgate</a> (public domain, via eBible.org). The denylist derives from <a href="https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words" target="_blank" rel="noopener noreferrer">LDNOOBW</a>, under CC BY 4.0.</p>
           <p><b>Software.</b> <a href="https://github.com/clockworklabs/SpacetimeDB" target="_blank" rel="noopener noreferrer">SpacetimeDB</a> by Clockwork Labs (TypeScript SDK under ISC, Rust crate under Apache 2.0); the <a href="https://github.com/modelcontextprotocol/typescript-sdk" target="_blank" rel="noopener noreferrer">Model Context Protocol TypeScript SDK</a> (MIT); <a href="https://github.com/panva/jose" target="_blank" rel="noopener noreferrer">jose</a> by Filip Skokan (MIT); <a href="https://expressjs.com" target="_blank" rel="noopener noreferrer">Express</a> (MIT); <a href="https://vite.dev" target="_blank" rel="noopener noreferrer">Vite</a> (MIT). For the demo: <a href="https://playwright.dev" target="_blank" rel="noopener noreferrer">Playwright</a> by Microsoft (Apache 2.0) and <a href="https://ffmpeg.org" target="_blank" rel="noopener noreferrer">FFmpeg</a>.</p>
+          <p><b>Icons.</b> The tool icons in the welcome come from <a href="https://simpleicons.org" target="_blank" rel="noopener noreferrer">Simple Icons</a> (CC0).</p>
           <p><b>Gold shimmer.</b> The shimmer on the gold text is borrowed from TuringOS.</p>
           <p class="small">The code of this project is under the MIT licence.</p>
         </section>

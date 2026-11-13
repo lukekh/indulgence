@@ -77,6 +77,8 @@ const SAMPLING_RETRY_MS = 2000;
 const HEARTBEAT_EVERY_MS = 60_000;
 const ENDED_RETAIN_MS = 10 * 60_000;
 const TICKET_TTL_MS = 10 * 60_000;
+/** How long a link that confirms an account's deletion stays good. */
+export const DELETION_TTL_MS = 10 * 60_000;
 const MAX_QUEUED_CALLS = 3;
 
 interface LiveSession {
@@ -125,6 +127,10 @@ export class SessionManager {
   readonly rejectCounts = new Map<RejectReason, number>();
   /** Called after an account is deleted (the OAuth layer then refuses its old tokens). */
   onForgotten?: (ghHash: string) => void;
+  /** One-time links that confirm an account's deletion, by their token. */
+  private deletions = new Map<string, { ghHash: string; expires: number }>();
+  /** The gate's own public address, where the confirmation page lives. */
+  gateUrl = '';
 
   constructor(
     private readonly store: Store,
@@ -324,21 +330,51 @@ export class SessionManager {
     return { ok: true };
   }
 
-  /** End any live session for the account without a candle; the module deletes the rest. */
-  async forget(account: Account): Promise<{ ok: true } | { error: ErrorCode }> {
+  /**
+   * The first half of deleting an account: nothing is deleted. Returns a one-time link to a
+   * page on the gate where the person confirms it themselves, so that no model can delete
+   * an account on its own say-so.
+   */
+  requestDeletion(account: Account): { url: string } {
+    const now = this.clock.now();
+    for (const [t, d] of this.deletions) if (d.expires < now || d.ghHash === account.ghHash) this.deletions.delete(t);
+    const token = randomBytes(16).toString('base64url'); // 128-bit
+    this.deletions.set(token, { ghHash: account.ghHash, expires: now + DELETION_TTL_MS });
+    return { url: `${this.gateUrl}/delete-account?t=${token}` };
+  }
+
+  /** Whether a confirmation link is still good (it is not used up by asking). */
+  deletionPending(token: unknown): boolean {
+    const d = typeof token === 'string' ? this.deletions.get(token) : undefined;
+    return !!d && d.expires >= this.clock.now();
+  }
+
+  /** The second half: the person pressed the button. The link works once. */
+  async confirmDeletion(token: unknown): Promise<{ ok: true } | { error: ErrorCode | 'invalid_link' }> {
+    if (!this.deletionPending(token)) return { error: 'invalid_link' };
+    const { ghHash } = this.deletions.get(token as string)!;
+    this.deletions.delete(token as string);
+    return this.forget(ghHash);
+  }
+
+  /**
+   * Delete the account: end any live session without a candle; the module deletes the rest.
+   * Candles already lit are kept, and burn until they go out.
+   */
+  async forget(ghHash: string): Promise<{ ok: true } | { error: ErrorCode }> {
     for (const s of this.sessions.values()) {
-      if (s.ghHash === account.ghHash) {
+      if (s.ghHash === ghHash) {
         this.markEnded(s);
         this.sessions.delete(s.id);
       }
     }
-    this.beginTimes.delete(account.ghHash);
+    this.beginTimes.delete(ghHash);
     try {
-      await this.store.forget(account.ghHash);
+      await this.store.forget(ghHash);
     } catch {
       return { error: 'unavailable' };
     }
-    this.onForgotten?.(account.ghHash);
+    this.onForgotten?.(ghHash);
     return { ok: true };
   }
 

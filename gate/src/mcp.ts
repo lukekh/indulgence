@@ -13,7 +13,7 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { C } from '../../shared/constants.js';
-import type { Account, ErrorCode, SessionManager, Sampler } from './sessions.js';
+import { DELETION_TTL_MS, type Account, type ErrorCode, type SessionManager, type Sampler } from './sessions.js';
 
 export const SERVER_NAME = 'indulgence';
 export const SERVER_VERSION = '0.1.0';
@@ -99,10 +99,13 @@ export const TOOLS: Tool[] = [
     outputSchema: { type: 'object', properties: { ok: bool }, required: ['ok'] },
   },
   {
-    name: 'forget',
-    description: 'Delete the signed-in account, its follow edges, sessions and candles.',
+    name: 'delete_account',
+    description:
+      'Ask to delete the signed-in account. Call this only when the user has explicitly asked to delete their account; ' +
+      'never to stop praying or end a session (use depart for that). It deletes nothing itself: it returns a url that the ' +
+      'user must open in a browser to confirm. Show the url to the user. Returns url and deleted (always false).',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    outputSchema: { type: 'object', properties: { ok: bool }, required: ['ok'] },
+    outputSchema: { type: 'object', properties: { url: str, deleted: bool }, required: ['url', 'deleted'] },
   },
 ];
 
@@ -179,10 +182,13 @@ export async function callTool(sessions: SessionManager, name: string, rawArgs: 
       await sessions.depart(account, args);
       return ok({ ok: true });
     }
-    case 'forget': {
-      const r = await sessions.forget(account);
-      if ('error' in r) return fail(r.error);
-      return ok({ ok: true });
+    case 'delete_account': {
+      const r = sessions.requestDeletion(account);
+      return ok({ url: r.url, deleted: false }, [
+        'Nothing has been deleted yet.',
+        `To delete the account, the user must open this link and confirm within ${DELETION_TTL_MS / 60_000} minutes: ${r.url}`,
+        'Candles already lit keep burning, with the name on them, until they go out.',
+      ]);
     }
   }
   return fail('unknown_tool');

@@ -1,14 +1,21 @@
 ---
 description: Buy an indulgence. Spends your own tokens on Latin prayers, recited by your priest in a shared cathedral.
-argument-hint: "[--private] [budget, e.g. 20k] [intention] | forget"
-allowed-tools: mcp__plugin_indulgence_indulgence__begin, mcp__plugin_indulgence_indulgence__vigil, mcp__plugin_indulgence_indulgence__pray, mcp__plugin_indulgence_indulgence__depart, mcp__plugin_indulgence_indulgence__forget
+argument-hint: "[--private] [budget, e.g. 20k] [intention] | delete-account"
+allowed-tools: mcp__plugin_indulgence_indulgence__begin, mcp__plugin_indulgence_indulgence__vigil, mcp__plugin_indulgence_indulgence__pray, mcp__plugin_indulgence_indulgence__depart, mcp__plugin_indulgence_indulgence__delete_account
 ---
 
 Arguments: $ARGUMENTS
 
 Follow these steps exactly. Use only the indulgence tools and the `priest` subagent. Do not read files, run commands or call any other tool.
 
-If the arguments are exactly `forget`: call `mcp__plugin_indulgence_indulgence__forget`, reply "Forgotten." and nothing else, and stop.
+If the arguments are exactly `delete-account`: call `mcp__plugin_indulgence_indulgence__delete_account`. It deletes nothing by itself; it returns a `url`. Print these two lines exactly, with the returned url, and nothing else, then stop:
+
+```
+Nothing has been deleted yet. To delete your account, open this link and confirm:
+<the url>
+```
+
+Never call that tool for any other arguments, and never to stop praying or end a session.
 
 Otherwise:
 

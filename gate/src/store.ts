@@ -38,6 +38,8 @@ export interface Store {
   forget(ghHash: string): Promise<void>;
   /** Resolves with the priest's x once its row is visible, or undefined on timeout. */
   priestX(priestId: bigint, timeoutMs: number): Promise<number | undefined>;
+  /** The x of every priest in a pew (not leaving), for showing a visitor an occupied bay. */
+  occupiedXs(): number[];
   /** Called when a priest row starts departing or is deleted (takeover, reaper). */
   onPriestGone(cb: (priestId: bigint) => void): void;
   isReady(): boolean;

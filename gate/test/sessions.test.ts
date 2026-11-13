@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { C } from '../../shared/constants.js';
-import { SessionManager, type BeginResult, type PrayResult, type VigilResult, type Sampler } from '../src/sessions.js';
+import { SessionManager, DELETION_TTL_MS, type BeginResult, type PrayResult, type VigilResult, type Sampler } from '../src/sessions.js';
 import { FakeStore, LATIN_PRAYERS, LATIN_PRAYER } from './fakes.js';
 
 const alice = { ghHash: 'a'.repeat(32), viewerSub: 'v.alice' };
@@ -322,13 +322,33 @@ describe('viewer tickets', () => {
   });
 });
 
-describe('forget', () => {
+describe('deleting an account', () => {
+  it('needs the link to be confirmed, which works once and for ten minutes', async () => {
+    const { store, sessions } = setup();
+    sessions.gateUrl = 'https://gate.test';
+    const { url } = sessions.requestDeletion(alice);
+    const t = new URL(url).searchParams.get('t')!;
+    expect(url.startsWith('https://gate.test/delete-account?t=')).toBe(true);
+    expect(sessions.deletionPending(t)).toBe(true);
+    expect(sessions.deletionPending('nope')).toBe(false);
+    expect(await sessions.confirmDeletion('nope')).toEqual({ error: 'invalid_link' });
+    expect(store.forgotten).toEqual([]);
+    vi.advanceTimersByTime(DELETION_TTL_MS + 1);
+    expect(await sessions.confirmDeletion(t)).toEqual({ error: 'invalid_link' });
+    expect(store.forgotten).toEqual([]);
+
+    const again = new URL(sessions.requestDeletion(alice).url).searchParams.get('t')!;
+    expect(await sessions.confirmDeletion(again)).toEqual({ ok: true });
+    expect(store.forgotten).toEqual([alice.ghHash]);
+    expect(await sessions.confirmDeletion(again)).toEqual({ error: 'invalid_link' });
+  });
+
   it('ends the live session without a candle and deletes the account', async () => {
     const { store, sessions } = setup();
     const forgotten: string[] = [];
     sessions.onForgotten = (h) => forgotten.push(h);
     const { session_id } = await begin(sessions);
-    expect(await sessions.forget(alice)).toEqual({ ok: true });
+    expect(await sessions.forget(alice.ghHash)).toEqual({ ok: true });
     expect(store.departs).toEqual([]); // module's forget departs without lighting a candle
     expect(store.forgotten).toEqual([alice.ghHash]);
     expect(forgotten).toEqual([alice.ghHash]);

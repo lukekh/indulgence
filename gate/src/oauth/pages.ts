@@ -8,7 +8,7 @@ export const DISCLAIMERS: [string, string][] = [
   ['In-session tier.', 'In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out. Your mutuals can read your prayers unless you opt out, so if that worries you, opt out (see Sharing).'],
   ['Sharing.', 'By default the people you follow mutually on GitHub can read your prayers. To opt out, run /indulgence --private (or pass share_prayers: false to begin). Then everyone else sees only pre-generated prayer text, never yours.'],
   ['Independent project.', 'Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).'],
-  ['Deletion.', '/indulgence forget deletes your account, follow edges, sessions and candles. You can also revoke the OAuth app in your GitHub settings at any time.'],
+  ['Deletion.', '/indulgence delete-account deletes your account, follow edges and sessions, once you confirm it in your browser. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings at any time.'],
 ];
 
 export const CONSENT_TEXT =
@@ -83,6 +83,21 @@ export function consentPage(pendingId: string, login: string, fullName: string):
 <button class="primary" name="choice" value="username">Show my username (${escapeHtml(login)})</button>
 ${fullButton}
 <button name="choice" value="cancel">Cancel</button>
+</form></div>`,
+  );
+}
+
+/** The page a person confirms their account's deletion on; `token` is the one-time link's. */
+export function deleteAccountPage(token: string): string {
+  return shell(
+    'Delete your account',
+    `<h1>/indulgence</h1><p class="sub">Delete your account</p>
+<div class="card"><p>This deletes your /indulgence account: your name and sign-in, who you follow, and your sessions. If your priest is praying, it leaves at once without lighting a candle. It cannot be undone.</p>
+<p>Candles you have already lit are not put out. They keep burning, with your name on them, until they go out by themselves (within two days).</p>
+<p>If you did not ask for this, close this page and nothing happens.</p>
+<form method="post" action="/delete-account">
+<input type="hidden" name="t" value="${escapeHtml(token)}">
+<button class="primary" name="decision" value="delete">Delete my account</button>
 </form></div>`,
   );
 }

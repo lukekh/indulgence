@@ -1,9 +1,9 @@
 // Music for the cathedral: Gregorian chant, sung in a nave, from when you open the page.
 //
 // The recordings (web/public/audio) were put through cathedral_reverb.py. They play one after
-// another, beginning with the Dies irae, and start again after the last. Browsers do not let a page start sound until you have
-// touched it, so if playback is refused at first it begins, fading in, on your first click or
-// key press. "Silentium" in the bottom left silences it, and "Musica" brings it back; the
+// another, beginning with the Dies irae, and start again after the last. Browsers do not
+// let a page start sound until you have touched it, so if playback is refused at first it
+// begins, fading in, on your first click, tap or key press. "Silentium" in the bottom left silences it, and "Musica" brings it back; the
 // choice is remembered. A build with VITE_MUSIC=off (the demos, which have their own
 // soundtrack) has no music and no button.
 
@@ -22,6 +22,8 @@ export const MUSIC_VOLUME = 0.5;
 export const FADE_IN_MS = 3000;
 export const FADE_OUT_MS = 1200;
 const STORAGE_KEY = 'indulgence:music';
+/** What may count as touching the page, so that a browser lets sound begin. */
+const GESTURES = ['pointerdown', 'pointerup', 'mousedown', 'touchend', 'click', 'keydown'] as const;
 
 /** A volume moving in a straight line from `from` to `to` over `durationMs`. */
 export function fadeLevel(elapsedMs: number, durationMs: number, from: number, to: number): number {
@@ -98,15 +100,26 @@ export function setUpMusic(doc: Document = document) {
     }
   };
 
-  // Until you have touched the page, wait for the first click or key and begin then (but not
-  // if the touch was on the music button itself, whose own click decides).
+  // Until you have touched the page, wait for the first touch, click or key and begin then
+  // (but not if it was on the music button itself, whose own click decides). Which events a
+  // browser counts as a touch differs: a mouse press does, but on a phone only the end of a
+  // tap. So listen for all of them, and keep listening until one is let through.
+  let starting = false;
+  const stopWaiting = () => {
+    for (const type of GESTURES) window.removeEventListener(type, onGesture, true);
+  };
   const onGesture = (e: Event) => {
     if (e.target instanceof Node && wrap.contains(e.target)) return;
-    for (const type of ['pointerdown', 'keydown']) window.removeEventListener(type, onGesture, true);
-    if (wanted && audio.paused) void start();
+    if (!wanted || !audio.paused) return stopWaiting();
+    if (starting) return;
+    starting = true;
+    void start().then((ok) => {
+      starting = false;
+      if (ok) stopWaiting();
+    });
   };
   const waitForGesture = () => {
-    for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, onGesture, true);
+    for (const type of GESTURES) window.addEventListener(type, onGesture, true);
   };
 
   button.addEventListener('click', () => {
