@@ -163,7 +163,7 @@ You don't need to open the link to follow along. After each accepted prayer the 
 
 | Tool | Arguments | Returns | What it does |
 | --- | --- | --- | --- |
-| `begin` | `intention` (your words, up to 140 characters), `budget_tokens` (optional), `share_prayers` (optional, default `true`) | `session_id`, `url`, `mode`, `budget_tokens`, `share_prayers` | Starts a session and seats your priest. `url` is a single-use link to the viewer. `share_prayers: false` opts out of sharing |
+| `begin` | `intention` (your words, up to 500 characters), `budget_tokens` (optional), `share_prayers` (optional, default `true`) | `session_id`, `url`, `mode`, `budget_tokens`, `share_prayers` | Starts a session and seats your priest. `url` is a single-use link to the viewer. `share_prayers: false` opts out of sharing |
 | `pray` | `session_id`, `text` (Latin, at most 120 words), `tier` | `accepted`, `done`, `left` | Submits one prayer. Rejected prayers are not charged |
 | `vigil` | `session_id` | `done`, `mode`, `prayers`, `spent`, `left` | Sampling clients only: waits up to 5 minutes while the gate asks your client for prayers |
 | `depart` | `session_id` | `ok` | Ends the session early. Your priest lights a candle and leaves |

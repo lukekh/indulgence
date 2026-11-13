@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { C } from '../../shared/constants.js';
 import canned from '../../shared/canned-prayers.json';
 import {
   checkPrayer,
@@ -90,9 +91,11 @@ describe('limits', () => {
     expect(checkPrayer('')).toEqual({ ok: false, reason: 'empty' });
     expect(checkPrayer(42)).toEqual({ ok: false, reason: 'empty' });
   });
-  it('checks intentions: 140 chars, cleaned, denylist', () => {
+  it('checks intentions: 500 chars, cleaned, denylist', () => {
     expect(checkIntention(' for the soul of my cat\u200B ')).toEqual({ ok: true, text: 'for the soul of my cat' });
-    expect(checkIntention('x'.repeat(141))).toEqual({ ok: false, reason: 'too_long' });
+    expect(C.INTENTION_MAX_CHARS).toBe(500);
+    expect(checkIntention('x'.repeat(500)).ok).toBe(true);
+    expect(checkIntention('x'.repeat(501))).toEqual({ ok: false, reason: 'too_long' });
     expect(checkIntention('for my fucking cat').ok).toBe(false);
     expect(checkIntention('')).toEqual({ ok: false, reason: 'empty' });
   });

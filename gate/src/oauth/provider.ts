@@ -192,7 +192,7 @@ export class GateOAuthProvider implements OAuthServerProvider {
     // Clients registered before redirect URIs were restricted carry their own (signed) list,
     // so check the URI in use as well as at registration. Never redirect to a refused one.
     if (!redirectAllowed(params.redirectUri, this.allowed)) {
-      return page(res, 400, messagePage('Application not allowed', 'This application asked for access to be sent somewhere /indulgence does not allow. Only Claude Code and other applications on this computer can sign in.'));
+      return page(res, 400, messagePage('Application not allowed', 'This application asked for access to be sent somewhere /indulgence does not allow. Only coding agents and other applications on this computer can sign in.'));
     }
     if (params.resource && params.resource.href !== this.resourceUrl) {
       res.redirect(clientRedirect(params.redirectUri, { error: 'invalid_target', state: params.state }));
@@ -220,18 +220,18 @@ export class GateOAuthProvider implements OAuthServerProvider {
     // form came from this origin.
     const site = req.get('sec-fetch-site');
     if (site && site !== 'same-origin') {
-      return page(res, 403, messagePage('Not allowed', 'This request did not come from the /indulgence sign-in page. Start again from Claude Code.'));
+      return page(res, 403, messagePage('Not allowed', 'This request did not come from the /indulgence sign-in page. Start again from your agent.'));
     }
     let claims: Claims;
     try {
       claims = await this.o.keys.verify(String(req.body?.request ?? ''), 'authz', `${this.o.publicUrl}#authz`);
     } catch {
-      return page(res, 400, messagePage('Sign-in expired', 'This page has expired. Start again from Claude Code.'));
+      return page(res, 400, messagePage('Sign-in expired', 'This page has expired. Start again from your agent.'));
     }
     const nonce = readCookie(req, this.cookies.authz);
     clearCookie(res, this.cookies, this.cookies.authz);
     if (!nonce || !safeEqual(sha256(nonce), String(claims.nh))) {
-      return page(res, 403, messagePage('Sign-in expired', 'This page was not opened in this browser, or has expired. Start again from Claude Code.'));
+      return page(res, 403, messagePage('Sign-in expired', 'This page was not opened in this browser, or has expired. Start again from your agent.'));
     }
     const flow: Flow = { cid: String(claims.cid), ru: String(claims.ru), cc: String(claims.cc), st: claims.st === undefined ? undefined : String(claims.st) };
     if (!redirectAllowed(flow.ru, this.allowed)) {
@@ -284,7 +284,7 @@ export class GateOAuthProvider implements OAuthServerProvider {
       const claims = await this.o.keys.verify(String(query.state ?? ''), 'state', `${this.o.publicUrl}#state`);
       flow = { cid: String(claims.cid), ru: String(claims.ru), cc: String(claims.cc), st: claims.st === undefined ? undefined : String(claims.st) };
     } catch {
-      return page(res, 400, messagePage('Sign-in expired', 'This sign-in link is invalid or has expired. Start again from Claude Code.'));
+      return page(res, 400, messagePage('Sign-in expired', 'This sign-in link is invalid or has expired. Start again from your agent.'));
     }
     if (query.error || typeof query.code !== 'string') {
       return res.redirect(clientRedirect(flow.ru, { error: 'access_denied', state: flow.st }));
@@ -340,7 +340,7 @@ export class GateOAuthProvider implements OAuthServerProvider {
     const entry = this.pending.get(id);
     this.pending.delete(id);
     if (!entry || entry.expires < Date.now()) {
-      return page(res, 400, messagePage('Consent expired', 'This page has expired. Start again from Claude Code.'));
+      return page(res, 400, messagePage('Consent expired', 'This page has expired. Start again from your agent.'));
     }
     const { flow, draft } = entry;
     const choice = body?.choice;

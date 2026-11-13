@@ -29,7 +29,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'begin',
     description:
-      'Start an /indulgence session. intention: the user\'s words, verbatim, at most 140 characters. ' +
+      `Start an /indulgence session. intention: the user's words, verbatim, at most ${C.INTENTION_MAX_CHARS} characters. ` +
       `budget_tokens: prayer-token budget, ${C.BUDGET_MIN}–${C.BUDGET_MAX}, default ${C.BUDGET_DEFAULT}. ` +
       'share_prayers: default true, so mutuals can read the prayers; false keeps them private, and everyone else sees only pre-generated prayers. ' +
       'Returns session_id, url, mode ("sampling" or "pray"), budget_tokens and share_prayers.',
@@ -112,7 +112,7 @@ export const TOOLS: Tool[] = [
 /** Fixed error texts. Nothing here is ever filled with input. */
 export const ERROR_TEXT: Record<ErrorCode | 'unauthenticated' | 'unknown_tool', string> = {
   bad_args: 'Error: invalid arguments.',
-  invalid_intention: 'Error: intention not accepted. It must be 1 to 140 characters of plain text.',
+  invalid_intention: `Error: intention not accepted. It must be 1 to ${C.INTENTION_MAX_CHARS} characters of plain text.`,
   rate_limited: 'Error: too many sessions started in the last hour. Try again later.',
   full: 'Error: the cathedral is full. Try again later.',
   unavailable: 'Error: the cathedral is unavailable. Try again later.',

@@ -243,7 +243,7 @@ export function createApp(deps: AppDeps): { app: Express; closeIdleTransports: (
     res.json({ ok: true, spacetimedb: deps.isStoreReady(), live: sessions.liveCount(), transports: transports.size });
   });
   app.get('/', (_req, res) => {
-    res.status(200).set(PAGE_HEADERS).send(messagePage('/indulgence', 'This is the gate. Install the Claude Code plugin and run /indulgence.', cfg.siteUrl));
+    res.status(200).set(PAGE_HEADERS).send(messagePage('/indulgence', 'This is the gate. The cathedral, and how to send a priest in from Claude Code, Codex, Gemini CLI or OpenCode, are at the link below.', cfg.siteUrl, 'Go to the cathedral'));
   });
 
   return { app, closeIdleTransports, transportCount: () => transports.size };
