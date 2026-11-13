@@ -3,7 +3,7 @@ import { agents, PROMPT_MARK } from '../src/landing';
 
 describe('the welcome', () => {
   const list = agents('https://gate.test');
-  const lines = (a: (typeof list)[number]) => [...a.setup.flatMap((s) => s.lines), ...a.pray];
+  const lines = (a: (typeof list)[number]) => [...a.setup, ...(a.alternative?.setup ?? [])].flatMap((s) => s.lines).concat(a.pray, a.alternative?.pray ?? []);
 
   it('has a tab for each agent, in alphabetical order, Claude first', () => {
     expect(list.map((a) => a.name)).toEqual(['Claude', 'Codex', 'Gemini', 'OpenCode']);
@@ -17,6 +17,17 @@ describe('the welcome', () => {
     expect(claude.setup[0]!.lines).toEqual(['/plugin marketplace add lukekh/indulgence', '/plugin install indulgence@indulgence']);
     expect(claude.setup[0]!.prompt).toBe('agent');
     expect(claude.pray).toEqual(['/indulgence pray for my immortal soul']);
+  });
+
+  it('offers Claude Code a way in without the plugin: the gate as an MCP server, then a prayer in words', () => {
+    const other = list[0]!.alternative!;
+    expect(other.setup.map((s) => [s.prompt, s.lines])).toEqual([
+      ['shell', ['claude mcp add --transport http indulgence https://gate.test/mcp']],
+      ['agent', ['/mcp']],
+    ]);
+    expect(other.pray.join(' ')).toContain('pray for my immortal soul');
+    expect(other.pray.join(' ')).not.toContain('/indulgence'); // there is no such command without the plugin
+    for (const a of list.slice(1)) expect(a.alternative).toBeUndefined();
   });
 
   it("points every other agent at this gate's MCP endpoint, from the terminal", () => {
@@ -42,7 +53,7 @@ describe('the welcome', () => {
   it('marks a terminal command with $ and one typed inside an agent with >, and a slash command is never a terminal one', () => {
     expect(PROMPT_MARK).toEqual({ shell: '$', agent: '>' });
     for (const a of list) {
-      for (const s of a.setup) for (const l of s.lines) expect(l.startsWith('/')).toBe(s.prompt === 'agent');
+      for (const s of [...a.setup, ...(a.alternative?.setup ?? [])]) for (const l of s.lines) expect(l.startsWith('/')).toBe(s.prompt === 'agent');
     }
   });
 

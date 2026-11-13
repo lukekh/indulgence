@@ -28,6 +28,8 @@ export interface Agent {
   setup: Step[];
   /** What to tell it then, typed inside the agent. */
   pray: string[];
+  /** Another way in, shown after the first: its own steps, and what to tell the agent then. */
+  alternative?: { setup: Step[]; prayLead: string; pray: string[] };
 }
 
 const OPENING = 'If you would like to convert tokens to salvation then';
@@ -44,6 +46,16 @@ export function agents(gate: string): Agent[] {
       colour: '#d97757', // Claude's orange
       setup: [{ before: `${OPENING} execute `, accent: 'in Claude Code', prompt: 'agent', lines: ['/plugin marketplace add lukekh/indulgence', '/plugin install indulgence@indulgence'] }],
       pray: ['/indulgence pray for my immortal soul'],
+      // Without the plugin: the gate as a plain MCP server. There is no /indulgence command
+      // then, so the prayer is asked for in words, as with the other agents.
+      alternative: {
+        setup: [
+          { before: '', accent: 'For Claude Code', after: ', in your terminal run', prompt: 'shell', lines: [`claude mcp add --transport http indulgence ${mcp}`] },
+          { before: 'Then inside ', accent: 'Claude Code', after: ' sign in with', prompt: 'agent', lines: ['/mcp'] },
+        ],
+        prayLead: 'and pray using',
+        pray: [PROMPT],
+      },
     },
     {
       id: 'codex',
@@ -147,6 +159,8 @@ export function setUpLanding(gate: string, doc: Document = document): Landing {
   const tabs = [...panel.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
   const setup = panel.querySelector<HTMLElement>('[data-setup]');
   const pray = panel.querySelector<HTMLElement>('[data-pray]');
+  const alt = panel.querySelector<HTMLDetailsElement>('[data-alt]');
+  const altBody = panel.querySelector<HTMLElement>('[data-alt-body]');
 
   const choose = (id: string) => {
     const agent = list.find((a) => a.id === id) ?? list[0]!;
@@ -157,17 +171,29 @@ export function setUpLanding(gate: string, doc: Document = document): Landing {
     }
     // The chosen tab and the words that name the agent are in that agent's colour.
     panel.style.setProperty('--agent', agent.colour);
-    setup?.replaceChildren(
-      ...agent.setup.flatMap((step) => {
+    const steps = (of: Step[]) =>
+      of.flatMap((step) => {
         const lead = doc.createElement('p');
         const accent = doc.createElement('span');
         accent.className = 'where';
         accent.textContent = step.accent;
         lead.append(step.before, accent, step.after ?? '');
         return [lead, block(doc, step.lines, step.prompt, `Commands for ${agent.name}`)];
-      }),
-    );
+      });
+    setup?.replaceChildren(...steps(agent.setup));
     pray?.replaceChildren(block(doc, agent.pray, 'agent', `What to tell ${agent.name}`));
+    if (alt && altBody) {
+      const other = agent.alternative;
+      alt.hidden = !other;
+      alt.open = false;
+      if (other) {
+        const lead = doc.createElement('p');
+        lead.textContent = other.prayLead;
+        altBody.replaceChildren(...steps(other.setup), lead, block(doc, other.pray, 'agent', `What to tell ${agent.name}`));
+      } else {
+        altBody.replaceChildren();
+      }
+    }
   };
   tabs.forEach((t, i) => {
     const own = list.find((a) => a.id === t.dataset.agent);

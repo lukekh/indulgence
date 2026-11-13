@@ -44,6 +44,10 @@
       #landing h1 { margin: 2px 0 0; font-size: clamp(44px, 9vw, 68px); line-height: 1.05; font-weight: 600; color: var(--gold); text-shadow: 0 0 6px rgba(222, 180, 89, 0.55), 0 0 16px rgba(222, 180, 89, 0.3); }
       #landing .motto { margin: 2px 0 14px; font-size: clamp(19px, 3.6vw, 24px); font-weight: 500; color: var(--gold); text-shadow: 0 0 6px rgba(222, 180, 89, 0.45); }
       #landing p { margin: 10px 0; }
+      #landing .alt { margin: 12px 0 0; }
+      #landing .alt[hidden] { display: none; }
+      #landing .alt summary { cursor: pointer; color: var(--dim); font-size: 16px; font-weight: 600; list-style-position: inside; }
+      #landing .alt summary:hover, #landing .alt summary:focus-visible, #landing .alt[open] summary { color: var(--agent, var(--gold)); }
       #landing .where { color: var(--agent, var(--gold)); }
       #landing .small { color: var(--dim); font-size: 16px; margin-top: 14px; }
       #landing a { color: var(--text); text-decoration-color: rgba(222, 180, 89, 0.6); }
@@ -103,6 +107,11 @@
         <p>and instruct your virtual priest to pray using</p>
         <div data-pray></div>
         <p>and your priest should appear in the infinite digital cathedral. <span lang="la">Deo gratias.</span></p>
+        <!-- Another way in for the chosen agent, if it has one (Claude Code without the plugin): closed until asked for. -->
+        <details data-alt class="alt" hidden>
+          <summary>Or connect without the plugin</summary>
+          <div data-alt-body></div>
+        </details>
         <p class="small">See <a href="https://github.com/lukekh/indulgence" target="_blank" rel="noopener noreferrer">github.com/lukekh/indulgence</a> for more details.</p>
       </div>
     </section>
