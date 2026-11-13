@@ -50,6 +50,21 @@ describe('begin', () => {
     expect(store.live()[0]!.tier).toBe('Pending');
   });
 
+  it('shares prayers with mutuals by default, and opts out only on request', async () => {
+    const { store, sessions } = setup();
+    const r = await begin(sessions);
+    expect(r.share_prayers).toBe(true);
+    expect(store.live()[0]!.share).toBe(true);
+    const off = await begin(sessions, alice, { share_prayers: false });
+    expect(off.share_prayers).toBe(false);
+    expect(store.live().at(-1)!.share).toBe(false);
+    expect((await begin(sessions, alice, { share_prayers: true })).share_prayers).toBe(true);
+    expect((await begin(sessions, alice, { share_prayers: null })).share_prayers).toBe(true);
+    for (const bad of ['no', 0, 1, 'false', {}]) {
+      expect(await sessions.begin(alice, { intention: 'cat', share_prayers: bad }, { mode: 'pray' })).toEqual({ error: 'bad_args' });
+    }
+  });
+
   it('clamps budgets and rejects bad intentions', async () => {
     const { sessions } = setup();
     expect((await begin(sessions, alice, { budget_tokens: 5 })).budget_tokens).toBe(C.BUDGET_MIN);

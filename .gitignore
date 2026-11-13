@@ -4,3 +4,8 @@ target/
 .env
 .env.local
 *.pem
+
+# Music for the video is supplied by the user and never committed.
+*.ogg
+*.wav
+__pycache__/

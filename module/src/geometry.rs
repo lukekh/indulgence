@@ -106,6 +106,22 @@ pub fn choose_seat(
     choose_without_mutuals(q, occupied, rng)
 }
 
+/// Video only (`INDULGENCE_VIDEO_SEATING=1` at build time, see build.rs): a seat with no
+/// other priest within two rows and six tiles, so that the words over each priest have room.
+/// Otherwise every free seat will do.
+#[cfg(video_seating)]
+fn roomy(s: &SeatAddr, taken: &HashSet<SeatAddr>) -> bool {
+    let p = seat_pos(*s);
+    taken.iter().all(|o| {
+        let q = seat_pos(*o);
+        !((p.1 - q.1).abs() <= 4 && (p.0 - q.0).abs() <= 6)
+    })
+}
+#[cfg(not(video_seating))]
+fn roomy(_: &SeatAddr, _: &HashSet<SeatAddr>) -> bool {
+    true
+}
+
 fn choose_near_mutuals(
     mutuals: &[Pos],
     q: f64,
@@ -125,7 +141,7 @@ fn choose_near_mutuals(
     let mut candidates = Vec::new();
     for b in bays {
         let taken = occupied(b);
-        candidates.extend(bay_seats(b).filter(|s| !taken.contains(s)));
+        candidates.extend(bay_seats(b).filter(|s| !taken.contains(s) && roomy(s, &taken)));
     }
     if candidates.is_empty() {
         return None;
@@ -169,7 +185,7 @@ fn choose_without_mutuals(
         rows.sort_by_key(|r| ((*r as i32 - target).abs(), *r));
         for row in rows {
             let free: Vec<SeatAddr> = bay_seats(bay)
-                .filter(|s| s.row == row && !taken.contains(s))
+                .filter(|s| s.row == row && !taken.contains(s) && roomy(s, &taken))
                 .collect();
             if !free.is_empty() {
                 return Some(free[rng.below(free.len())]);

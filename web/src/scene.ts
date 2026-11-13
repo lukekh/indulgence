@@ -181,6 +181,14 @@ export function furniture(cam: Camera, x0: number, x1: number, yMax: number): Dr
   return out;
 }
 
+/** Where an arcade's votive stand is on screen (with its candles), base px: click it for the close-up. */
+export function standRect(cam: Camera, arcade: number): [number, number, number, number] {
+  const bx = arcade * BAY_W;
+  const [x0, y0] = project(cam, bx + C.STAND_X[0]! - 0.5, C.STAND_Y[0]! - 0.3);
+  const [x1, y1] = project(cam, bx + C.STAND_X[1]! + 0.5, C.STAND_Y[1]! + 0.3);
+  return [x0, y0 - 26, x1 - x0, y1 - y0 + 26];
+}
+
 export interface CandleView {
   arcade: number;
   slot: number;

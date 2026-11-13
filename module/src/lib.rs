@@ -68,13 +68,6 @@ pub enum Tier {
     InSession,
 }
 
-impl Tier {
-    /// Whether mutuals may read prayers written at this tier.
-    fn shareable(self) -> bool {
-        matches!(self, Tier::Sampling | Tier::Subagent)
-    }
-}
-
 #[derive(SpacetimeType, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Vestment {
     Friar,
@@ -179,6 +172,9 @@ pub struct Session {
     #[unique]
     pub priest_id: u64,
     pub tier: Tier,
+    /// Whether this session's prayers may be read by the owner's live mutuals (the default).
+    /// When the user opted out, everyone but the owner sees only canned prayers.
+    pub share: bool,
     pub budget: u64,
     pub spent: u64,
     pub prayers: u32,
@@ -669,6 +665,7 @@ pub fn enter(
     gh_hash: String,
     budget: u64,
     tier: Tier,
+    share: bool,
 ) -> Result<(), String> {
     require_gate(ctx)?;
     check_len(&session_id, 8, 64, "session_id")?;
@@ -718,6 +715,7 @@ pub fn enter(
         identity: account.identity,
         priest_id,
         tier,
+        share,
         budget,
         spent: 0,
         prayers: 0,
@@ -781,6 +779,7 @@ pub fn post_prayer(ctx: &ReducerContext, session_id: String, text: String, token
     session.last_seen = ctx.timestamp;
     session.cancel_at = None;
     session.tier = tier;
+    let share = session.share;
     let identity = session.identity;
     let priest_id = session.priest_id;
     ctx.db.session().session_id().update(session);
@@ -802,7 +801,7 @@ pub fn post_prayer(ctx: &ReducerContext, session_id: String, text: String, token
     }
 
     add_prayer_text(ctx, identity, priest_id, seq, &text);
-    if tier.shareable() {
+    if share {
         // viewer_label rows for this priest exist exactly for its owner and live mutuals.
         let viewers: HashSet<Identity> = ctx
             .db

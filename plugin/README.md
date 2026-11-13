@@ -16,11 +16,13 @@ The first run opens a page in your browser that names the application asking for
 ```
 /indulgence for the soul of my cat
 /indulgence 20k for the soul of my cat
+/indulgence --private for the soul of my cat
 /indulgence forget
 ```
 
+- **Sharing is the default.** Your mutuals can read the prayers your priest says. `--private` opts out: everyone else then sees only pre-generated prayer text, never yours, and Claude Code tells you so when it starts.
 - The budget is optional: a number with an optional `k` or `m` suffix, from 1,000 to 1,000,000 prayer tokens. The default is 10,000, which is about 50 prayers, one every 20 seconds (about 17 minutes).
-- Claude Code prints a link to the cathedral. Open it to watch your priest. Your mutual follows on GitHub sit near you, and you can read each other's prayers.
+- Claude Code prints a link to the cathedral. Open it to watch your priest. Your mutual follows on GitHub sit near you, and you can read each other's prayers (unless either of you opted out with `--private`).
 - Press Esc to stop. Your priest leaves within about 90 seconds, or 3 minutes if Claude Code is closed.
 - `/indulgence forget` deletes your account, follow edges, sessions and candles.
 
@@ -62,14 +64,14 @@ The service keeps the least data it needs to seat priests and burn candles. Pray
 | GitHub numeric ID, stored as a keyed hash | Linking sessions to your account | No one | Until `forget` |
 | Mutual follows, stored as keyed hashes | Seating you near friends | No one; the server only | Replaced at each sign-in; deleted by `forget` |
 | Intention text | Prompt for your prayers | Only you | End of session |
-| Prayer text | Display | You; your mutuals if made by the sampling or subagent tier | Until your priest has left |
+| Prayer text | Display | You; your mutuals, unless you opted out with `--private` | Until your priest has left |
 | Your copy of your priest's prayers | Your record | Only you: it is a file on your machine, never sent anywhere | Until you delete it (`~/.claude/indulgence`) |
 | Session times, budget, spend | Pacing, vestments, candle size | Your candle's size and presence show that you visited in the last day or two | 7 days after the session ends |
 | IP address | Rate limiting | No one | 24 hours, in gate logs |
 
 **Never collected:** your code, files or repositories; anything in your conversation outside /indulgence; your email; your GitHub access token, which is revoked once your mutuals are worked out.
 
-**Who sees what.** Strangers see an anonymous priest saying canned prayers, plus the names on candles. Your mutuals see your name when they hover over your priest, and read your generated prayers (not in-session ones). You see everything about your own priest.
+**Who sees what.** Strangers see an anonymous priest saying canned (pre-generated) prayers, plus the names on candles. Your mutuals see your name when they hover over your priest, and read the prayers your model writes, unless you opted out with `--private`; then they see pre-generated prayers too. You see everything about your own priest.
 
 Mutuals come from your public follow lists, using the first 5,000 accounts you follow and the first 5,000 that follow you. They are refreshed when you sign in again, at most every 30 days.
 
@@ -78,6 +80,6 @@ Mutuals come from your public follow lists, using the first 5,000 accounts you f
 - **Satire.** Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.
 - **Real cost.** Every prayer spends tokens your provider bills you for. The budget counts prayer text only; actual usage is roughly 2 to 5 times higher, and more in long sessions.
 - **Generated text.** Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.
-- **In-session tier.** In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out, which is why those prayers are shown only to you.
+- **Sharing.** By default your mutuals can read your prayers. The model that writes them may be able to see your session. Obvious leaks are filtered (see the README for what the filter can and can't stop), but none can be ruled out. To opt out, use `/indulgence --private`: everyone else then sees only pre-generated prayer text, never yours.
 - **Independent project.** Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).
 - **Deletion.** `/indulgence forget` deletes your account, follow edges, sessions and candles. You can also revoke the OAuth app in your GitHub settings at any time.

@@ -3,7 +3,10 @@
 // the gate's MCP tool handler (`callTool`), so tool results are the real templates.
 //
 // Cast: you, three mutual friends praying, two mutual friends who already left votive
-// candles burning, and a congregation of strangers.
+// candles burning, and a congregation of strangers. `video: true` (see video.ts) recasts it
+// for the YouTube video: two friends who go by their GitHub usernames and don't know each
+// other (so they sit apart), strangers with realistic handles, a longer list of prayers for
+// you, and friends seated before the congregation.
 
 import http from 'node:http';
 import { Keys } from '../gate/src/keys.js';
@@ -25,11 +28,15 @@ export interface CathedralOptions {
   module: string;
   youLogin: string;
   strangers: number;
+  /** Cast the cathedral for the video rather than the GIF. */
+  video?: boolean;
   log?: (line: string) => void;
 }
 
 export interface Layout {
   own: { x: number; y: number };
+  /** Everyone else, unnamed to you. */
+  strangers: { x: number; y: number }[];
   friends: Record<string, { x: number; y: number }>;
   candles: Record<string, { arcade: number; slot: number; size: string }>;
 }
@@ -56,6 +63,24 @@ const CANDLE_FRIENDS = [
   { id: 5, name: 'Bede', spent: 14_000 },
   { id: 6, name: 'Clare', spent: 31_000 },
 ];
+
+// The video's cast. Friends go by their GitHub usernames, as people who chose "show my
+// username" would.
+const VIDEO_YOUR_PRAYERS = [
+  ...YOUR_PRAYERS,
+  'Requiem aeternam dona ei, Domine, et lux perpetua luceat ei. Requiescat in pace. Amen.',
+  'Domine, qui das escam omni carni, memento famuli tui parvi, qui in sinu nostro dormivit. Sit ei terra levis, et somnus dulcis sub alis tuis. Amen.',
+  'Agnus Dei, qui tollis peccata mundi, dona ei requiem. Agnus Dei, qui tollis peccata mundi, dona ei requiem sempiternam.',
+];
+const VIDEO_LIVE_FRIENDS = [
+  { id: 2, name: 'hildegard-b', budget: 60_000 },
+  { id: 3, name: 'anselm42', budget: 25_000 },
+];
+const VIDEO_CANDLE_FRIENDS = [
+  { id: 5, name: 'venerable-bede', spent: 14_000 },
+  { id: 6, name: 'clare-of-assisi', spent: 31_000 },
+];
+const VIDEO_HANDLES = ['mkowalski', 'j-osei', 'tanaka-r', 'dvorak-ivo', 'sofia-mp', 'nils-b', 'priya-dev', 'okafor-c', 'ludmila-k', 'rafa-gz', 'ewan-mc', 'ines-ferraz', 'kofi-a', 'bea-lindqvist', 'tom-hadley', 'yusuf-k'];
 const YOU = 1;
 const STRANGER_BUDGETS = [3000, 8000, 12_000, 30_000, 60_000, 250_000];
 
@@ -99,17 +124,27 @@ export async function startCathedral(o: CathedralOptions) {
   store.attach(stdb);
 
   const acct = (id: number) => ({ ghHash: keys.ghHash(id), viewerSub: keys.viewerSub(id) });
-  const friendIds = [...LIVE_FRIENDS, ...CANDLE_FRIENDS].map((f) => f.id);
-  const liveIds = LIVE_FRIENDS.map((f) => f.id);
+  const liveFriends = o.video ? VIDEO_LIVE_FRIENDS : LIVE_FRIENDS;
+  const candleFriends = o.video ? VIDEO_CANDLE_FRIENDS : CANDLE_FRIENDS;
+  const yourPrayers = o.video ? VIDEO_YOUR_PRAYERS : YOUR_PRAYERS;
+  const friendIds = [...liveFriends, ...candleFriends].map((f) => f.id);
+  const liveIds = liveFriends.map((f) => f.id);
 
-  // Accounts. You are mutuals with all five friends; the three live friends with each other.
+  // Accounts. You are mutuals with every friend. In the GIF the live friends know each other;
+  // in the video they don't, so they are seated apart (mutuals sit within a few tiles of
+  // each other) and the words over each priest have room.
   await store.upsertAccount({ ...acct(YOU), ghLogin: o.youLogin, ghName: '', labelMode: 'Username', mutualHashes: friendIds.map((id) => keys.ghHash(id)) });
-  for (const f of [...LIVE_FRIENDS, ...CANDLE_FRIENDS]) {
+  for (const f of [...liveFriends, ...candleFriends]) {
+    if (o.video) {
+      await store.upsertAccount({ ...acct(f.id), ghLogin: f.name, ghName: '', labelMode: 'Username', mutualHashes: [keys.ghHash(YOU)] });
+      continue;
+    }
     const mutuals = [YOU, ...(liveIds.includes(f.id) ? liveIds.filter((x) => x !== f.id) : [])];
     await store.upsertAccount({ ...acct(f.id), ghLogin: f.name.toLowerCase(), ghName: f.name, labelMode: 'FullName', mutualHashes: mutuals.map((id) => keys.ghHash(id)) });
   }
   for (let i = 0; i < o.strangers; i++) {
-    await store.upsertAccount({ ...acct(100 + i), ghLogin: `pilgrim${i}`, ghName: '', labelMode: 'Username', mutualHashes: [] });
+    const login = o.video ? (VIDEO_HANDLES[i % VIDEO_HANDLES.length] ?? `pilgrim${i}`) : `pilgrim${i}`;
+    await store.upsertAccount({ ...acct(100 + i), ghLogin: login, ghName: '', labelMode: 'Username', mutualHashes: [] });
   }
 
   const live: { id: number; sessionId: string; tier: 'subagent' | 'in_session' }[] = [];
@@ -120,7 +155,7 @@ export async function startCathedral(o: CathedralOptions) {
   };
 
   // Two friends came earlier, prayed for a while and left votives.
-  for (const f of CANDLE_FRIENDS) {
+  for (const f of candleFriends) {
     const sid = await begin(f.id, 20_000);
     for (let k = 0; k < 3; k++) await store.postPrayer({ sessionId: sid, text: PRAYERS[k]!, tokens: Math.ceil(f.spent / 3), tier: 'Subagent' });
     await sessions.depart(acct(f.id), { session_id: sid });
@@ -128,11 +163,15 @@ export async function startCathedral(o: CathedralOptions) {
   const candlesLitAt = Date.now();
   log('two friends lit votives');
 
+  const seatFriends = async () => {
+    for (const f of liveFriends) live.push({ id: f.id, sessionId: await begin(f.id, f.budget), tier: 'subagent' });
+  };
+  if (o.video) await seatFriends();
   for (let i = 0; i < o.strangers; i++) {
     live.push({ id: 100 + i, sessionId: await begin(100 + i, STRANGER_BUDGETS[i % STRANGER_BUDGETS.length]!), tier: 'in_session' });
   }
-  for (const f of LIVE_FRIENDS) live.push({ id: f.id, sessionId: await begin(f.id, f.budget), tier: 'subagent' });
-  log(`${LIVE_FRIENDS.length} friends and ${o.strangers} strangers seated`);
+  if (!o.video) await seatFriends();
+  log(`${liveFriends.length} friends and ${o.strangers} strangers seated`);
 
   // Everyone prays on their own rhythm; MCP activity keeps them from being reaped.
   let stopped = false;
@@ -174,7 +213,7 @@ export async function startCathedral(o: CathedralOptions) {
     },
     /** One `pray` call as the priest subagent would make it. */
     async pray(i: number) {
-      const text = YOUR_PRAYERS[i % YOUR_PRAYERS.length]!;
+      const text = yourPrayers[i % yourPrayers.length]!;
       const res = await callTool(sessions, 'pray', { session_id: yourSession, text, tier: 'subagent' }, { account: you, signal: signal() });
       return { ...(res.structuredContent as { done: boolean; accepted: boolean; left: number }), text };
     },
@@ -196,7 +235,9 @@ export async function startCathedral(o: CathedralOptions) {
           .onApplied(() => resolve(c))
           .subscribe([tables.priest, tables.candle, tables.viewerLabel]);
       });
-      const out: Layout = { own: { x: 0, y: 0 }, friends: {}, candles: {} };
+      const out: Layout = { own: { x: 0, y: 0 }, strangers: [], friends: {}, candles: {} };
+      const named = new Set([...conn.db.viewerLabel.iter()].map((l) => l.priestId));
+      for (const p of conn.db.priest.iter()) if (!named.has(p.priestId) && p.state.tag !== 'Departing') out.strangers.push({ x: p.x, y: p.y });
       for (const l of conn.db.viewerLabel.iter()) {
         const p = conn.db.priest.priestId.find(l.priestId);
         if (!p) continue;

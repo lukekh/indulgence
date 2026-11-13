@@ -45,6 +45,8 @@ export interface BeginResult {
   url: string;
   mode: Mode;
   budget_tokens: number;
+  /** Whether mutuals can read this session's prayers (the default); false if the user opted out. */
+  share_prayers: boolean;
 }
 export interface PrayResult {
   done: boolean;
@@ -142,7 +144,7 @@ export class SessionManager {
 
   async begin(
     account: Account,
-    args: { intention?: unknown; budget_tokens?: unknown },
+    args: { intention?: unknown; budget_tokens?: unknown; share_prayers?: unknown },
     ctx: { mode: Mode; mcpSessionId?: string },
   ): Promise<BeginResult | { error: ErrorCode }> {
     const intention = checkIntention(args.intention);
@@ -153,6 +155,10 @@ export class SessionManager {
       if (typeof args.budget_tokens !== 'number' || !Number.isFinite(args.budget_tokens)) return { error: 'bad_args' };
       budget = Math.min(C.BUDGET_MAX, Math.max(C.BUDGET_MIN, Math.round(args.budget_tokens)));
     }
+
+    // Sharing is the default; false opts out, and anything else is refused.
+    if (args.share_prayers !== undefined && args.share_prayers !== null && typeof args.share_prayers !== 'boolean') return { error: 'bad_args' };
+    const share = args.share_prayers !== false;
 
     const now = this.clock.now();
     const recent = (this.beginTimes.get(account.ghHash) ?? []).filter((t) => now - t < 3_600_000);
@@ -176,6 +182,7 @@ export class SessionManager {
         ghHash: account.ghHash,
         budget,
         tier: ctx.mode === 'sampling' ? 'Sampling' : 'Pending',
+        share,
       });
     } catch (e) {
       const code = e instanceof StoreError ? e.code : 'unavailable';
@@ -212,7 +219,7 @@ export class SessionManager {
     s.px = await this.store.priestX(priestId, 5000);
 
     const ticket = this.issueTicket(sessionId);
-    return { session_id: sessionId, url: `${this.siteUrl}/#t=${ticket}`, mode: ctx.mode, budget_tokens: budget };
+    return { session_id: sessionId, url: `${this.siteUrl}/#t=${ticket}`, mode: ctx.mode, budget_tokens: budget, share_prayers: share };
   }
 
   async pray(

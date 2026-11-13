@@ -5,14 +5,15 @@ export const DISCLAIMERS: [string, string][] = [
   ['Satire.', 'Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.'],
   ['Real cost.', 'Every prayer spends tokens your provider bills you for. The budget counts prayer text only; actual usage is roughly 2 to 5 times higher, and more in long sessions.'],
   ['Generated text.', 'Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.'],
-  ['In-session tier.', 'In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out, which is why those prayers are shown only to you.'],
+  ['In-session tier.', 'In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out. Your mutuals can read your prayers unless you opt out, so if that worries you, opt out (see Sharing).'],
+  ['Sharing.', 'By default the people you follow mutually on GitHub can read your prayers. To opt out, run /indulgence --private (or pass share_prayers: false to begin). Then everyone else sees only pre-generated prayer text, never yours.'],
   ['Independent project.', 'Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).'],
   ['Deletion.', '/indulgence forget deletes your account, follow edges, sessions and candles. You can also revoke the OAuth app in your GitHub settings at any time.'],
 ];
 
 export const CONSENT_TEXT =
   'Your GitHub username (or your full name, if you choose) will be shown publicly on your candle for about a day after each visit. ' +
-  'That shows roughly when you used /indulgence. People you follow mutually on GitHub will see your name above your priest and can read your prayers. ' +
+  'That shows roughly when you used /indulgence. People you follow mutually on GitHub will see your name above your priest and can read your prayers, unless you opt out with /indulgence --private. ' +
   'We never see your code or your conversation. Prayers spend your own model tokens.';
 
 export const PAGE_HEADERS: Record<string, string> = {

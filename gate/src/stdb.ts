@@ -108,7 +108,7 @@ export class StdbStore implements Store {
     return this.call(() => this.conn.reducers.revokeGrant({ ghHash, grant }));
   }
 
-  enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }) {
+  enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName; share: boolean }) {
     return this.call(() =>
       this.conn.reducers.enter({
         sessionId: a.sessionId,
@@ -116,6 +116,7 @@ export class StdbStore implements Store {
         ghHash: a.ghHash,
         budget: BigInt(a.budget),
         tier: { tag: a.tier },
+        share: a.share,
       }),
     );
   }

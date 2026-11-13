@@ -7,6 +7,16 @@ fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let src = manifest.join("../shared/constants.json");
     println!("cargo:rerun-if-changed={}", src.display());
+    // Video only (demo/video.ts): with INDULGENCE_VIDEO_SEATING=1 the module seats priests
+    // with room between them and fills bays of five, so the words over each priest fit on
+    // screen. Never publish a module built this way to a real database.
+    println!("cargo:rerun-if-env-changed=INDULGENCE_VIDEO_SEATING");
+    println!("cargo::rustc-check-cfg=cfg(video_seating)");
+    let video = env::var("INDULGENCE_VIDEO_SEATING").is_ok_and(|v| v == "1");
+    if video {
+        println!("cargo:rustc-cfg=video_seating");
+        println!("cargo:warning=INDULGENCE_VIDEO_SEATING=1: building with the video's seating. Do not publish this to a real database.");
+    }
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&src).expect("read shared/constants.json"))
             .expect("parse shared/constants.json");
@@ -18,7 +28,8 @@ fn main() {
         }
         match value {
             serde_json::Value::Number(n) if n.is_i64() => {
-                writeln!(out, "pub const {key}: i64 = {};", n.as_i64().unwrap()).unwrap();
+                let v = if video && key == "BAY_SOFT_CAP" { 5 } else { n.as_i64().unwrap() };
+                writeln!(out, "pub const {key}: i64 = {v};").unwrap();
             }
             serde_json::Value::Number(n) => {
                 writeln!(out, "pub const {key}: f64 = {:?};", n.as_f64().unwrap()).unwrap();

@@ -34,7 +34,7 @@ export class DeferredStore implements Store {
   async revokeGrant(ghHash: string, grant: string) {
     return this.s.revokeGrant(ghHash, grant);
   }
-  async enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName }) {
+  async enter(a: { sessionId: string; priestId: bigint; ghHash: string; budget: number; tier: TierName; share: boolean }) {
     return this.s.enter(a);
   }
   async postPrayer(a: { sessionId: string; text: string; tokens: number; tier: TierName }) {

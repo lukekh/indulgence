@@ -165,6 +165,7 @@ export const Session = __t.object("Session", {
   get tier() {
     return Tier;
   },
+  share: __t.bool(),
   budget: __t.u64(),
   spent: __t.u64(),
   prayers: __t.u32(),

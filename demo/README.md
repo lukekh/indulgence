@@ -62,9 +62,45 @@ Most of a run is real time: priests walk at a solemn 1 tile per second, and the 
 | `stained-glass.jpg` | All fifteen window designs, crisp and upright as designed |
 | `stained-glass-floor.jpg` | Each design as its light lies on the floor of your bay, in game and on its own at 5× |
 | `votive-stand.jpg` | The stands either side of your pews, both facing in, with tapers, votives, pillars and paschal candles, lit |
+| `votive-close-up.jpg` | The close-up of a stand you get by clicking it, in its carved stone archway: candles of every size at every stage of burning |
+| `votive-old-wax.jpg` | Three empty stands, each with old wax generated from a hash of where it stands |
+| `../candle-melt.gif` | A 10 s hyperlapse of that close-up: a candle of each size burning down over 72 hours |
 | `window-rim.jpg` | The window light on the side of each figure: in the pews with and without it, and close up without it, with the faint edge, and in a pool of light |
 | `priest-friar.jpg`, `priest-priest.jpg`, `priest-bishop.jpg`, `priest-cardinal.jpg` | Each vestment in every pose: up the aisle, kneeling, along the pew both ways (profile), walking out, lighting a candle |
 | `thurifer.jpg` | The thurifer at three points of the thurible's swing |
 | `priests.jpg` | Every vestment from behind and from the front, and the thurifer |
 
 It serves `demo/assets/` with Vite (sprites and font from `web/public/`) and saves each sheet from headless Chrome, so it needs `npm install` in `web/` as well as here, but no SpacetimeDB or Rust.
+
+## The video
+
+`npm run video` makes a 1080p video of a longer, more faithful session for YouTube: Claude Code alone in the terminal, the cathedral at 2× so the next bay shows on either side, a visible mouse that tours the scene (a friend, the key, a votive, the thurifer, the notices), your priest praying for most of a minute, and then departing to light its candle. It is `video.ts`, built like `record.ts` (a fresh SpacetimeDB, the module, the viewer and the real gate), with Chrome's screencast at about 30 fps encoded by ffmpeg to H.264 + AAC. It takes about 10 minutes and writes `~/Movies/indulgence-demo.mp4`.
+
+```sh
+VIDEO_AUDIO=/path/to/music.wav npm run video
+```
+
+The music is yours to supply: none is in the repository. To put it in a cathedral first, run it through `cathedral_reverb.py`:
+
+```sh
+python3 -m pip install -r requirements.txt        # numpy, scipy
+python3 cathedral_reverb.py music.ogg music-cathedral.wav [seconds] [--loop]
+```
+
+`--loop` wraps the reverb tail round onto the start so the result is exactly as long as the recording and repeats with no gap. The viewer's own music (`web/public/audio/`) was made with this script.
+
+It convolves the recording with a synthesised room impulse response for a long gothic nave (90 × 28 × 30 m, choir in the chancel, listener halfway down). The late tail is decaying noise in seven octave bands, each decaying at the rate set by the walls' absorption (Eyring) and the air's, which dominates at high frequencies, about 5.6 s at 1 kHz; the early reflections are the first- and second-order image sources of the shoebox, panned by direction and darkened by each bounce. The result is mixed 55% dry, 85% wet. `video.ts` then fades the track in and out and normalises it to about −18 LUFS.
+
+The video recasts the cathedral so the words over each priest have room, without changing it for anyone else. `video: true` in `scenario.ts` gives two friends who go by their GitHub usernames and don't know each other, strangers with ordinary handles, and a longer list of prayers for you; and the module is built with `INDULGENCE_VIDEO_SEATING=1` (see `module/build.rs`), which seats priests apart and fills bays of five. **Never publish a module built that way to a real database**; the build prints a warning when it is on.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `VIDEO_AUDIO` | | The music, a `.wav` (required) |
+| `VIDEO_OUT` | `~/Movies/indulgence-demo.mp4` | Output path |
+| `VIDEO_LOGIN` | `lukekh` | Your GitHub login in the video |
+| `VIDEO_SITE` | `https://indulgence.example` | The address shown in place of the demo's localhost links |
+| `VIDEO_SEATED_MS` | 55000 | Real time spent watching your priest recite once it has sat down |
+| `VIDEO_STRANGERS` | 13 | Size of the congregation |
+| `VIDEO_KEEP_TMP` | | `1` keeps the run folder in `.cache/` |
+
+The viewer plays music of its own (see [`web/public/audio/README.md`](../web/public/audio/README.md)). The GIF and the video are recorded with it off (`VITE_MUSIC=off` when the demo builds the viewer); the sandbox keeps it.

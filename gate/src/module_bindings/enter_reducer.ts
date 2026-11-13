@@ -22,4 +22,5 @@ export default {
   get tier() {
     return Tier;
   },
+  share: __t.bool(),
 };

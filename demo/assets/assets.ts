@@ -9,6 +9,7 @@ import { AMBIENT, COL, GLOW_BEAM_ALPHA, GLOW_FLOOR_ALPHA, applyLighting, applyRa
 import { DESIGNS, GLASS, LANCET_LENGTH, rasterise, toBytes, type WindowDesign } from '../../web/src/glass';
 import { ditherFrame } from '../../web/src/dither';
 import { PriestSprites, VESTMENTS, type Side } from '../../web/src/sprites';
+import { renderFrame, renderStand, standSeed, FRAME, STAND_H, STAND_W, type StandCandle } from '../../web/src/stand';
 import { FACE, loadFont } from '../../web/src/text';
 import type { Dir, Pose } from '../../web/src/motion';
 
@@ -346,12 +347,50 @@ const TIERS: Record<VestmentName, string> = {
 
 // ---------------------------------------------------------------------------
 
+/** The stand close-up in its stone archway, at base resolution. */
+function framedStand(candles: StandCandle[], now: number, hover?: number, seed = standSeed(0, 'left')): HTMLCanvasElement {
+  const c = canvas(STAND_W + 2 * FRAME, STAND_H + 2 * FRAME);
+  const g = ctx2d(c);
+  g.drawImage(renderStand(candles, now, hover, seed), FRAME, FRAME);
+  g.drawImage(renderFrame(), 0, 0);
+  return c;
+}
+
+const MELT_HOURS = 72;
+const MELT_K = 3;
+/**
+ * One frame of the melting hyperlapse: a candle of each size (and a second taper) lit at
+ * hour 0, at `i` of `n` frames through the 72 hours the longest of them burns.
+ */
+function meltFrame(i: number, n: number): string {
+  const HOUR = 3_600_000;
+  const hours = (MELT_HOURS * i) / (n - 1);
+  const life: [number, CandleName, number][] = [[2, 'taper', 24], [7, 'taper', 24], [13, 'votive', 36], [16, 'votive', 36], [24, 'pillar', 48], [35, 'paschal', 72]];
+  const now = NOW + hours * HOUR;
+  // Candles are removed when they expire, as in the cathedral.
+  const candles: StandCandle[] = life.filter(([, , h]) => hours < h).map(([slot, size, h]) => ({ slot, size, litAt: NOW, expiresAt: NOW + h * HOUR }));
+  const pic = framedStand(candles, now + i * 137);
+  const c = canvas(pic.width * MELT_K, pic.height * MELT_K + 54);
+  const g = ctx2d(c);
+  g.fillStyle = BG;
+  g.fillRect(0, 0, c.width, c.height);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(pic, 0, 0, pic.width * MELT_K, pic.height * MELT_K);
+  g.font = `600 26px ${FACE}`;
+  g.textBaseline = 'middle';
+  g.fillStyle = 'rgb(222, 180, 89)';
+  const text = `hour ${Math.floor(hours)} of ${MELT_HOURS}`;
+  g.fillText(text, (c.width - g.measureText(text).width) / 2, pic.height * MELT_K + 28);
+  return c.toDataURL('image/png');
+}
+
 const out = new Map<string, HTMLCanvasElement>();
 const api = {
   ready: false,
   error: '',
   names: [] as string[],
   jpeg: (name: string) => out.get(name)!.toDataURL('image/jpeg', 0.92),
+  melt: meltFrame,
 };
 (window as unknown as { assets: typeof api }).assets = api;
 
@@ -438,6 +477,40 @@ async function main() {
   const stands = (raw: boolean) => pair(nave(vp, cam, candles, raw), [standCrop(0), standCrop(1)]);
   const standsIn = stands(false);
   const standsRaw = stands(true);
+  // The stand close up: candles of every size at every stage of burning, and one not yet lit.
+  const HOUR = 3_600_000;
+  const burn: Record<CandleName, number> = { taper: 24, votive: 36, pillar: 48, paschal: 72 };
+  const closeUp: StandCandle[] = (
+    [
+      [0, 'taper', 0.02], [1, 'taper', 0.3], [3, 'taper', 0.6], [4, 'taper', 0.9], [7, 'taper', 0.45], [9, 'taper', -1],
+      [10, 'votive', 0.05], [12, 'votive', 0.5], [13, 'votive', 0.85], [16, 'votive', 0.25], [18, 'votive', 0.7],
+      [21, 'pillar', 0.1], [23, 'pillar', 0.55], [26, 'pillar', 0.95], [28, 'pillar', 0.35],
+      [31, 'paschal', 0.03], [34, 'paschal', 0.5], [37, 'paschal', 0.8],
+    ] as [number, CandleName, number][]
+  ).map(([slot, size, spent]) => {
+    const life = burn[size] * HOUR;
+    return spent < 0 ? { slot, size, litAt: NOW + 2000, expiresAt: NOW + 2000 + life } : { slot, size, litAt: NOW - spent * life, expiresAt: NOW + (1 - spent) * life };
+  });
+  const closeUpShot = framedStand(closeUp, NOW, 23);
+  // Three empty stands, each with the old wax generated from where it stands.
+  const waxW = STAND_W + 2 * FRAME;
+  const waxShot = canvas(waxW * 3 + 16, STAND_H + 2 * FRAME);
+  ([[0, 'left'], [0, 'right'], [-7, 'left']] as [number, 'left' | 'right'][]).forEach(([bay, side], i) => {
+    ctx2d(waxShot).drawImage(framedStand([], NOW, undefined, standSeed(bay, side)), i * (waxW + 8), 0);
+  });
+  add(
+    'votive-old-wax',
+    sheet('Old wax on the votive stands', "Each stand's old wax is generated from a hash of where it is (its bay of pews and which side of them), so no two are alike and everyone sees the same.", [
+      { label: 'bay 0 left · bay 0 right · bay −7 left, with no candles burning (2×)', src: waxShot, x: 0, y: 0, w: waxShot.width, h: waxShot.height, k: 2 },
+    ]),
+  );
+  add(
+    'votive-close-up',
+    sheet('The votive stand, close up', 'Click a stand in the nave for this view. Each candle is as tall as the time it has left; wax pools at its foot as it burns. Hover a candle for whose it is.', [
+      { label: 'tapers, votives, pillars and paschal candles from just lit to nearly spent; the last taper is not yet lit; the hovered pillar has a dithered crimson rim (4×)', src: closeUpShot, x: 0, y: 0, w: closeUpShot.width, h: closeUpShot.height, k: 4 },
+    ]),
+  );
+
   add(
     'votive-stand',
     sheet('The votive stands', 'Four iron tiers in each arcade, with tapers, votives, pillars and paschal candles, stepping up away from your column of pews: left of it (facing right) and right of it (facing left).', [

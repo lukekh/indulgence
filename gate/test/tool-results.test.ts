@@ -84,7 +84,7 @@ describe('tool results', () => {
         const tool = TOOLS[Math.floor(r() * TOOLS.length)]!.name;
         const name = r() < 0.05 ? randomString(r, marker) : tool;
         const args: Record<string, unknown> = {};
-        for (const key of ['intention', 'budget_tokens', 'text', 'tier', 'session_id', marker]) {
+        for (const key of ['intention', 'budget_tokens', 'share_prayers', 'text', 'tier', 'session_id', marker]) {
           if (r() < 0.6) args[key] = randomValue(r, marker);
         }
         if (sessionId && r() < 0.6) args.session_id = sessionId;
@@ -102,7 +102,7 @@ describe('tool results', () => {
           expect(Object.values(ERROR_TEXT)).toContain((res.content[0] as { text: string }).text);
         } else {
           const keys = Object.keys(res.structuredContent ?? {});
-          expect(keys.every((k) => ['session_id', 'url', 'mode', 'budget_tokens', 'done', 'accepted', 'left', 'prayers', 'spent', 'ok'].includes(k))).toBe(true);
+          expect(keys.every((k) => ['session_id', 'url', 'mode', 'budget_tokens', 'share_prayers', 'done', 'accepted', 'left', 'prayers', 'spent', 'ok'].includes(k))).toBe(true);
           for (const v of Object.values(res.structuredContent ?? {})) {
             expect(['number', 'boolean', 'string'].includes(typeof v)).toBe(true);
             if (typeof v === 'string') expect(v).toMatch(/^(sampling|pray|https:\/\/site\.test\/#t=[\w-]+|[\w-]{24})$/);

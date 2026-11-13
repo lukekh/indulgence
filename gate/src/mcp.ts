@@ -31,20 +31,22 @@ export const TOOLS: Tool[] = [
     description:
       'Start an /indulgence session. intention: the user\'s words, verbatim, at most 140 characters. ' +
       `budget_tokens: prayer-token budget, ${C.BUDGET_MIN}–${C.BUDGET_MAX}, default ${C.BUDGET_DEFAULT}. ` +
-      'Returns session_id, url, mode ("sampling" or "pray") and budget_tokens.',
+      'share_prayers: default true, so mutuals can read the prayers; false keeps them private, and everyone else sees only pre-generated prayers. ' +
+      'Returns session_id, url, mode ("sampling" or "pray"), budget_tokens and share_prayers.',
     inputSchema: {
       type: 'object',
       properties: {
         intention: { type: 'string', maxLength: C.INTENTION_MAX_CHARS },
         budget_tokens: { type: 'integer', minimum: C.BUDGET_MIN, maximum: C.BUDGET_MAX, default: C.BUDGET_DEFAULT },
+        share_prayers: { type: 'boolean', default: true },
       },
       required: ['intention'],
       additionalProperties: false,
     },
     outputSchema: {
       type: 'object',
-      properties: { session_id: str, url: str, mode: { type: 'string', enum: ['sampling', 'pray'] }, budget_tokens: int },
-      required: ['session_id', 'url', 'mode', 'budget_tokens'],
+      properties: { session_id: str, url: str, mode: { type: 'string', enum: ['sampling', 'pray'] }, budget_tokens: int, share_prayers: bool },
+      required: ['session_id', 'url', 'mode', 'budget_tokens', 'share_prayers'],
     },
   },
   {
@@ -152,12 +154,14 @@ export async function callTool(sessions: SessionManager, name: string, rawArgs: 
       if ('error' in r) return fail(r.error);
       const prayers = Math.max(1, Math.round(r.budget_tokens / AVG_PRAYER_TOKENS));
       return ok(
-        { session_id: r.session_id, url: r.url, mode: r.mode, budget_tokens: r.budget_tokens },
+        { session_id: r.session_id, url: r.url, mode: r.mode, budget_tokens: r.budget_tokens, share_prayers: r.share_prayers },
         [
           `Watch your priest: ${r.url}`,
           `Budget: ${r.budget_tokens} prayer tokens (roughly ${prayers} prayers, one every ${C.PACING_SLOT_MS / 1000} seconds).`,
           'Real token usage is roughly 2 to 5 times the prayer-token budget.',
-          'Prayers written in-session (not by the priest subagent or sampling) are shown only to you.',
+          r.share_prayers
+            ? 'Your mutuals can read your prayers; strangers see pre-generated ones. Pass share_prayers: false to keep them private.'
+            : 'Sharing is off: everyone else will see only pre-generated prayer text, never your prayers.',
         ],
       );
     }
