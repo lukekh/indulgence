@@ -28,8 +28,10 @@
       /* The cathedral fills the whole window. */
       #view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
 
-      /* Two words in the bottom left, written over the scene like everything else. */
+      /* A few words in the bottom left, written over the scene like everything else. */
       #notices { position: fixed; left: 14px; bottom: 10px; display: flex; align-items: baseline; gap: 9px; font-size: 17px; text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.9); }
+      #music-wrap { display: flex; align-items: baseline; gap: 9px; }
+      #music-wrap[hidden] { display: none; }
       #notices .sep, dialog .sep { color: var(--gold); opacity: 0.8; font-size: 0.8em; }
       button.link { all: unset; cursor: pointer; color: var(--dim); font: inherit; font-weight: 600; letter-spacing: 0.01em; }
       button.link:hover, button.link:focus-visible { color: var(--crimson); }
@@ -64,6 +66,8 @@
       <button type="button" class="link" data-open="repudiationes" lang="la">Repudiationes</button>
       <span class="sep" aria-hidden="true">·</span>
       <button type="button" class="link" data-open="merita" lang="la">Merita</button>
+      <!-- The music, "Silentium" to silence it and "Musica" to bring it back; shown by music.ts. -->
+      <span id="music-wrap" hidden><span class="sep" aria-hidden="true">·</span><button type="button" class="link" id="music" lang="la">Silentium</button></span>
     </nav>
 
     <dialog id="notice" aria-labelledby="notice-title">

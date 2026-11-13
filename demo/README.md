@@ -84,8 +84,10 @@ The music is yours to supply: none is in the repository. To put it in a cathedra
 
 ```sh
 python3 -m pip install -r requirements.txt        # numpy, scipy
-python3 cathedral_reverb.py music.ogg music-cathedral.wav [seconds]
+python3 cathedral_reverb.py music.ogg music-cathedral.wav [seconds] [--loop]
 ```
+
+`--loop` wraps the reverb tail round onto the start so the result is exactly as long as the recording and repeats with no gap; it is how the viewer's own music (`web/public/audio/`) was made.
 
 It convolves the recording with a synthesised room impulse response for a long gothic nave (90 × 28 × 30 m, choir in the chancel, listener halfway down). The late tail is decaying noise in seven octave bands, each decaying at the rate set by the walls' absorption (Eyring) and the air's, which dominates at high frequencies, about 5.6 s at 1 kHz; the early reflections are the first- and second-order image sources of the shoebox, panned by direction and darkened by each bounce. The result is mixed 55% dry, 85% wet. `video.ts` then fades the track in and out and normalises it to about −18 LUFS.
 
@@ -100,3 +102,5 @@ The video recasts the cathedral so the words over each priest have room, without
 | `VIDEO_SEATED_MS` | 55000 | Real time spent watching your priest recite once it has sat down |
 | `VIDEO_STRANGERS` | 13 | Size of the congregation |
 | `VIDEO_KEEP_TMP` | | `1` keeps the run folder in `.cache/` |
+
+The viewer plays music of its own (see [`web/public/audio/README.md`](../web/public/audio/README.md)). The GIF and the video are recorded with it off (`VITE_MUSIC=off` when the demo builds the viewer); the sandbox keeps it.

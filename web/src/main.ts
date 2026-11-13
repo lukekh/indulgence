@@ -13,6 +13,7 @@ import { thurifersBetween, thuriferX, swing, NPC_LANE_Y, THURIFER_PRAYER } from 
 import { titleOver, cursorNote, drawLine, hoverText, loadFont, measureTag, nameTag, overlaps, placeLine, textSize, CRIMSON, type Rect, type TagStyle } from './text';
 import { drawKey, type KeyEntry, type KeyRow } from './key';
 import { setUpNotices } from './notices';
+import { setUpMusic } from './music';
 import { renderFrame, renderStand, slotHit, standPlacement, standSeed, FRAME, type StandCandle } from './stand';
 import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
@@ -641,5 +642,6 @@ window.addEventListener('keydown', (e) => {
 });
 
 setUpNotices();
+setUpMusic();
 void start();
 requestAnimationFrame(frame);

@@ -6,7 +6,11 @@ in octave bands, each band decaying at the rate set by the room's boundary absor
 (Eyring) and the air's absorption, which dominates at high frequencies in a large room; and
 discrete early reflections from first- and second-order image sources of a shoebox nave.
 
-    python3 cathedral_reverb.py in.ogg out.wav [seconds]
+    python3 cathedral_reverb.py in.ogg out.wav [seconds] [--loop]
+
+By default the whole recording is used and the reverb tail runs on past its end. With
+--loop the tail is wrapped round onto the start instead, so the result is exactly as long as
+the recording and, played on repeat, the last chord rings into the first with no gap.
 """
 
 import subprocess
@@ -40,9 +44,10 @@ def rt60(alpha: float, m: float) -> float:
     return 0.161 * V / (-S * np.log(1 - alpha) + 4 * m * V)
 
 
-def load(path: str, seconds: float) -> np.ndarray:
+def load(path: str, seconds: float | None) -> np.ndarray:
+    limit = ["-t", str(seconds)] if seconds else []
     raw = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", path, "-t", str(seconds), "-f", "f32le", "-ac", "2", "-ar", str(FS), "-"],
+        ["ffmpeg", "-v", "error", "-i", path, *limit, "-f", "f32le", "-ac", "2", "-ar", str(FS), "-"],
         capture_output=True,
         check=True,
     ).stdout
@@ -98,8 +103,10 @@ def early_reflections(n_samples: int) -> np.ndarray:
 
 
 def main():
-    src, dst = sys.argv[1], sys.argv[2]
-    seconds = float(sys.argv[3]) if len(sys.argv) > 3 else 300.0
+    args = [a for a in sys.argv[1:] if a != "--loop"]
+    loop = "--loop" in sys.argv[1:]
+    src, dst = args[0], args[1]
+    seconds = float(args[2]) if len(args) > 2 else None  # None: the whole recording
     rng = np.random.default_rng(7)
     for f, a, m in zip(BANDS, ALPHA, AIR_M):
         print(f"  {f:>5} Hz  RT60 {rt60(a, m):.2f} s")
@@ -114,8 +121,13 @@ def main():
     ir /= np.sqrt(np.sum(ir**2))
 
     wet = np.stack([signal.oaconvolve(dry[:, ch], ir[:, ch]) for ch in range(2)], axis=1)[: len(dry) + len(ir)]
+    if loop:
+        # Wrap the tail round onto the start, so the loop point is seamless.
+        tail = wet[len(dry):]
+        wet = wet[: len(dry)].copy()
+        wet[: len(tail)] += tail
     wet = signal.sosfilt(signal.butter(2, 70, btype="high", fs=FS, output="sos"), wet, axis=0)
-    dry_padded = np.vstack([dry, np.zeros((len(wet) - len(dry), 2))])
+    dry_padded = np.vstack([dry, np.zeros((len(wet) - len(dry), 2))]) if not loop else dry
     rms = lambda x: np.sqrt(np.mean(x**2)) + 1e-12  # noqa: E731
     wet *= rms(dry) / rms(wet)
     out = 0.55 * dry_padded + 0.85 * wet
