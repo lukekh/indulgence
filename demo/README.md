@@ -87,7 +87,7 @@ python3 -m pip install -r requirements.txt        # numpy, scipy
 python3 cathedral_reverb.py music.ogg music-cathedral.wav [seconds] [--loop]
 ```
 
-`--loop` wraps the reverb tail round onto the start so the result is exactly as long as the recording and repeats with no gap; it is how the viewer's own music (`web/public/audio/`) was made.
+`--loop` wraps the reverb tail round onto the start so the result is exactly as long as the recording and repeats with no gap. The viewer's own music (`web/public/audio/`) was made with this script.
 
 It convolves the recording with a synthesised room impulse response for a long gothic nave (90 × 28 × 30 m, choir in the chancel, listener halfway down). The late tail is decaying noise in seven octave bands, each decaying at the rate set by the walls' absorption (Eyring) and the air's, which dominates at high frequencies, about 5.6 s at 1 kHz; the early reflections are the first- and second-order image sources of the shoebox, panned by direction and darkened by each bounce. The result is mixed 55% dry, 85% wet. `video.ts` then fades the track in and out and normalises it to about −18 LUFS.
 

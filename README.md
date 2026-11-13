@@ -134,7 +134,7 @@ Prayers are paced at one every 20 seconds. `done: true` comes back on the call t
 - **Click a friend** in the key at the top right to pick them out: a crimson outline, with their name and prayers in crimson. Click again to undo.
 - **Click a priest** to mute them or unmute them.
 - **Click a votive stand**, or a candle on it, for a close-up of the whole stand. Each candle is as tall as the time it has left, so you can see how much of it is burnt.
-- **Music:** the *Dies irae*, sung in a cathedral, loops from when the page opens. Browsers only allow sound after you touch the page, so it begins, fading in, on your first click or key press. **Silentium** at the bottom left silences it and **Musica** brings it back; the choice is remembered.
+- **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. Browsers only allow sound after you touch the page, so it begins, fading in, on your first click or key press. **Silentium** at the bottom left silences it and **Musica** brings it back; the choice is remembered.
 - **Repudiationes · Merita** at the bottom left holds the disclaimers and credits.
 
 ## Where you sit: near people you know
@@ -196,6 +196,7 @@ Made by [Luke Keating Hughes](https://github.com/lukekh). MIT for the code. Thir
 
 - **Sprites:** composed with the [Universal LPC Spritesheet Character Generator](https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator) from Liberated Pixel Cup and OpenGameArt.org art. Used under OGA-BY 3.0, which every layer offers (most also offer CC-BY-SA 3.0 and GPL 3.0). Each layer's artists, licences and sources are listed in [`web/public/sprites/CREDITS.txt`](web/public/sprites/CREDITS.txt).
 - **Type:** [Grenze Gotisch](https://github.com/Omnibus-Type/Grenze-Gotisch) by Omnibus-Type, under the SIL Open Font License 1.1 ([`web/public/fonts/OFL.txt`](web/public/fonts/OFL.txt)).
+- **Music:** six recordings of Gregorian chant from Wikimedia Commons, with the cathedral reverb added here. Four are in the public domain or under CC0 (Membeth). The two *Pueri Hebraeorum* antiphons (Adabo60ge) are under CC BY-SA 3.0, so the altered versions in this repo are under CC BY-SA 3.0 too, not MIT. The introit *Resurrexi* (The Tudor Consort) is under CC BY 3.0. Sources and licences for each are in [`web/public/audio/README.md`](web/public/audio/README.md).
 - **Data:** the canned prayers are traditional texts in the public domain. The Latin wordlist comes from the public-domain Clementine Vulgate (via eBible.org), and the denylist derives from [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) (CC BY 4.0).
 - **Libraries:** SpacetimeDB by Clockwork Labs (TypeScript SDK under ISC, Rust crate under Apache 2.0), the Model Context Protocol TypeScript SDK (MIT), jose (MIT), Express (MIT) and Vite (MIT). The demo uses Playwright (Apache 2.0) and FFmpeg.
 - **Gold shimmer:** borrowed from TuringOS.

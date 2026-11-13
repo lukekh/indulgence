@@ -1,13 +1,21 @@
-// Music for the cathedral: Dies irae, sung in a nave, on a loop from when you open the page.
+// Music for the cathedral: Gregorian chant, sung in a nave, from when you open the page.
 //
-// The recording (web/public/audio) was put through cathedral_reverb.py in --loop mode, so its
-// last chord rings into its first. Browsers do not let a page start sound until you have
+// The recordings (web/public/audio) were put through cathedral_reverb.py. They play one after
+// another, beginning with the Dies irae, and start again after the last. Browsers do not let a page start sound until you have
 // touched it, so if playback is refused at first it begins, fading in, on your first click or
 // key press. "Silentium" in the bottom left silences it, and "Musica" brings it back; the
 // choice is remembered. A build with VITE_MUSIC=off (the demos, which have their own
 // soundtrack) has no music and no button.
 
-export const MUSIC_URL = '/audio/dies-irae-cathedral.m4a';
+/** The chants in the order they are sung. Credits: web/public/audio/README.md and Merita. */
+export const TRACKS: readonly string[] = [
+  '/audio/dies-irae-cathedral.m4a',
+  '/audio/pueri-hebraeorum-portantes-cathedral.m4a',
+  '/audio/pueri-hebraeorum-vestimenta-cathedral.m4a',
+  '/audio/improperia-cathedral.m4a',
+  '/audio/lamentatio-cathedral.m4a',
+  '/audio/resurrexi-cathedral.m4a',
+];
 export const MUSIC_VOLUME = 0.5;
 export const FADE_IN_MS = 3000;
 export const FADE_OUT_MS = 1200;
@@ -18,6 +26,11 @@ export function fadeLevel(elapsedMs: number, durationMs: number, from: number, t
   if (durationMs <= 0 || elapsedMs >= durationMs) return to;
   if (elapsedMs <= 0) return from;
   return from + (to - from) * (elapsedMs / durationMs);
+}
+
+/** The track after track `i`; the first follows the last. */
+export function nextTrack(i: number, count: number = TRACKS.length): number {
+  return (i + 1) % count;
 }
 
 function remembered(): boolean {
@@ -43,8 +56,8 @@ export function setUpMusic(doc: Document = document) {
   if (!wrap || !button || typeof Audio === 'undefined') return;
   wrap.hidden = false;
 
-  const audio = new Audio(MUSIC_URL);
-  audio.loop = true;
+  let track = 0;
+  const audio = new Audio(TRACKS[track]);
   audio.preload = 'auto';
   audio.volume = 0;
   let wanted = remembered();
@@ -108,6 +121,13 @@ export function setUpMusic(doc: Document = document) {
       remember(true);
       void start();
     }
+  });
+
+  // One chant ends and the next begins, at the volume this one had.
+  audio.addEventListener('ended', () => {
+    track = nextTrack(track);
+    audio.src = TRACKS[track]!;
+    if (wanted) void audio.play().catch(() => label());
   });
 
   label();
