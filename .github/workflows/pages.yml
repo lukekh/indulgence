@@ -1,0 +1,57 @@
+# Builds the viewer and publishes it to GitHub Pages on every push to main.
+#
+# The gate's address comes from the repository variable GATE_URL
+# (`gh variable set GATE_URL --body https://<gate>`). The site is served from
+# /<repository name>/, so the build is given that as its base path.
+name: Publish the viewer
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'shared/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Check the gate address is set
+        env:
+          GATE_URL: ${{ vars.GATE_URL }}
+        run: test -n "$GATE_URL" || { echo "Set the repository variable GATE_URL"; exit 1; }
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run build -- --base="/${{ github.event.repository.name }}/"
+        working-directory: web
+        env:
+          VITE_GATE_URL: ${{ vars.GATE_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

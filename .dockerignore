@@ -1,0 +1,8 @@
+# The gate's image is built from the repo root and needs only shared/ and gate/.
+*
+!shared
+!gate
+gate/node_modules
+gate/dist
+gate/.env*
+gate/*.pem

@@ -3,6 +3,7 @@
 // pre-scales them for the 16 × 8 tile grid. Missing sheets fall back to procedural figures.
 
 import type { VestmentName } from '../../shared/constants';
+import { asset } from './base';
 import type { Dir, Pose } from './motion';
 
 const FRAME = 64;
@@ -49,7 +50,7 @@ export class PriestSprites {
   private rims = new Map<string, HTMLCanvasElement>();
   private rimScratch?: HTMLCanvasElement;
 
-  static async load(base = '/sprites'): Promise<PriestSprites> {
+  static async load(base = asset('/sprites')): Promise<PriestSprites> {
     const s = new PriestSprites();
     await Promise.all(
       [...VESTMENTS, 'thurifer' as const].map(async (v) => {
