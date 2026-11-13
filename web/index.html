@@ -38,6 +38,16 @@
       button.link[aria-pressed='true'] { color: var(--gold); }
       button.link[aria-pressed='true']:hover { color: var(--crimson); }
 
+      /* The door: the page opens black. If the browser will not let the music begin without a
+         touch, the one word "Intra" appears; pressing it lets you in, to music (music.ts). */
+      #intra { all: unset; position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: #000; cursor: default; transition: opacity 900ms ease; }
+      #intra[hidden] { display: none; }
+      #intra span { font: 600 clamp(44px, 9vw, 68px)/1 var(--face); color: var(--gold); text-shadow: 0 0 6px rgba(222, 180, 89, 0.55), 0 0 16px rgba(222, 180, 89, 0.3); opacity: 0; transition: opacity 700ms ease; }
+      #intra.asking { cursor: pointer; }
+      #intra.asking span { opacity: 1; }
+      #intra.asking:hover span, #intra.asking:focus-visible span { color: rgb(251, 236, 187); }
+      #intra.opening { opacity: 0; pointer-events: none; }
+
       /* The welcome for a visitor without a link, over a bay of the cathedral. */
       #landing { position: fixed; left: 50%; top: 47%; transform: translate(-50%, -50%); width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 84px); box-sizing: border-box; overflow-y: auto; padding: 22px 26px 16px; border: 1px solid rgba(160, 154, 142, 0.38); background: rgba(8, 8, 8, 0.86); color: var(--text); font: 18px/1.5 var(--face); text-align: center; }
       #landing[hidden] { display: none; }
@@ -89,6 +99,8 @@
   </head>
   <body>
     <canvas id="view" aria-label="An endless cathedral where priests pray in Latin"></canvas>
+
+    <button type="button" id="intra" lang="la" aria-label="Intra (enter)"><span>Intra</span></button>
 
     <!-- For a visitor who came without a link: what this is and how to send a priest in. -->
     <section id="landing" aria-labelledby="landing-title" hidden>
