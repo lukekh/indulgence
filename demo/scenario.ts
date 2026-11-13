@@ -108,7 +108,7 @@ export async function startCathedral(o: CathedralOptions) {
   const store = new DeferredStore();
   const sessions = new SessionManager(store, o.siteUrl);
   const oauth = new GateOAuthProvider({ keys, store, github: new FakeGitHub(), publicUrl: cfg.publicUrl });
-  const server = http.createServer(createApp({ cfg, keys, oauth, sessions, isStoreReady: () => store.isReady() }).app);
+  const server = http.createServer(createApp({ cfg, keys, oauth, sessions, isStoreReady: () => store.isReady(), occupiedXs: () => store.occupiedXs() }).app);
   await new Promise<void>((r) => server.listen(o.gatePort, '127.0.0.1', r));
   log(`gate listening on ${cfg.publicUrl}`);
 

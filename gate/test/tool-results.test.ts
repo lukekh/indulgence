@@ -102,10 +102,10 @@ describe('tool results', () => {
           expect(Object.values(ERROR_TEXT)).toContain((res.content[0] as { text: string }).text);
         } else {
           const keys = Object.keys(res.structuredContent ?? {});
-          expect(keys.every((k) => ['session_id', 'url', 'mode', 'budget_tokens', 'share_prayers', 'done', 'accepted', 'left', 'prayers', 'spent', 'ok'].includes(k))).toBe(true);
+          expect(keys.every((k) => ['session_id', 'url', 'mode', 'budget_tokens', 'share_prayers', 'done', 'accepted', 'left', 'prayers', 'spent', 'ok', 'deleted'].includes(k))).toBe(true);
           for (const v of Object.values(res.structuredContent ?? {})) {
             expect(['number', 'boolean', 'string'].includes(typeof v)).toBe(true);
-            if (typeof v === 'string') expect(v).toMatch(/^(sampling|pray|https:\/\/site\.test\/#t=[\w-]+|[\w-]{24})$/);
+            if (typeof v === 'string') expect(v).toMatch(/^(sampling|pray|https:\/\/site\.test\/#t=[\w-]+|\/delete-account\?t=[\w-]{22}|[\w-]{24})$/);
           }
         }
       }

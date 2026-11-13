@@ -4,8 +4,8 @@
 import { C, type CandleName, type VestmentName } from '../../shared/constants';
 import { DbConnection } from './module_bindings';
 import type { Priest, PrayerTick, Candle } from './module_bindings/types';
-import { bayCentreX, cameraFor, project, sortDrawables, viewportFor, visibleTiles, LAYER, type Drawable, type Viewport, type Camera } from './view';
-import { poseAt, seatedAt, type PriestPlan, type Pose } from './motion';
+import { bayCentreX, cameraFor, project, sortDrawables, standFacesLeft, viewportFor, visibleTiles, LAYER, type Drawable, type Viewport, type Camera } from './view';
+import { candleShown, poseAt, seatedAt, type Action, type PriestPlan, type Pose } from './motion';
 import { AMBIENT, standRect, drawStatic, furniture, candleDrawable, candleFlame, applyLighting, fixedLights, drawFixedFlames, drawFlame, drawRays, applyRays, windowLightAt, type CandleView, type Glow, type Light } from './scene';
 import { ditherFrame } from './dither';
 import { PriestSprites, vestmentName, thuriferHand, thuribleBowl, type Side } from './sprites';
@@ -14,10 +14,11 @@ import { titleOver, cursorNote, drawLine, hoverText, loadFont, measureTag, nameT
 import { drawKey, type KeyEntry, type KeyRow } from './key';
 import { setUpNotices } from './notices';
 import { setUpMusic } from './music';
-import { renderFrame, renderStand, slotHit, standPlacement, standSeed, FRAME, type StandCandle } from './stand';
+import { closeUpMirrored, mirrorX, renderFrame, renderStand, slotHit, standPlacement, standSeed, FRAME, type StandCandle } from './stand';
 import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
-import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, type ViewerGrant } from './net';
+import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, spectate, GATE_URL, type ViewerGrant } from './net';
+import { setUpLanding } from './landing';
 
 const SLOT = C.PACING_SLOT_MS;
 /**
@@ -71,6 +72,11 @@ let conn: DbConnection | undefined;
 let ownId = 0n;
 let sprites: PriestSprites | undefined;
 let subscribed = false;
+/**
+ * A visitor who came without a link: shown a bay chosen at random, with the welcome over
+ * it. There is no priest of their own, so nothing is dismissed and nothing ends.
+ */
+let spectator = false;
 
 const muted = new Set<bigint>();
 /** Friends picked out from the key: crimson outline, crimson name. */
@@ -90,7 +96,7 @@ let standPanel: Rect | undefined;
 const now = () => Date.now() + skew;
 
 function closeWith(title: string, subtitle: string) {
-  if (phase === 'closing' || phase === 'closed') return;
+  if (spectator || phase === 'closing' || phase === 'closed') return;
   phase = 'closing';
   closingSince = Date.now();
   closingTitle = title;
@@ -113,14 +119,20 @@ async function start() {
     grant = undefined;
   }
   if (grant) saveGrant(grant);
+  if (!grant && !ticket) {
+    // No link: the welcome, over whichever bay the gate picks (or over the dark, if the
+    // gate cannot be reached). That grant is not kept, so a reload shows another bay.
+    spectator = true;
+    showLanding();
+    grant = await spectate().catch(() => undefined);
+  }
   sprites = await spritesLoading;
   if (!grant) {
     phase = 'no-ticket';
     closingTitle = TITLE;
-    closingSubtitle = ticket ? 'This link has already been used or has expired.' : 'Run /indulgence in Claude Code to enter the cathedral.';
+    closingSubtitle = 'This link has already been used or has expired.';
     return;
   }
-  saveGrant(grant);
   skew = grant.server_time - grant.received_at;
   ownId = BigInt(grant.priest_id);
   connect(grant);
@@ -133,7 +145,7 @@ async function keepTokenFresh() {
   const next = await refreshGrant(grant.token).catch(() => undefined);
   if (next) {
     grant = next;
-    saveGrant(next);
+    if (!spectator) saveGrant(next);
   }
 }
 
@@ -148,7 +160,7 @@ function connect(g: ViewerGrant) {
       const next = await refreshGrant(grant!.token);
       if (!next) throw new Error('session ended');
       grant = next;
-      saveGrant(next);
+      if (!spectator) saveGrant(next);
       return next.token;
     })
     .withAutomaticReconnect({ minDelayMs: 1000, maxDelayMs: 15_000 })
@@ -177,7 +189,7 @@ function connect(g: ViewerGrant) {
     .subscriptionBuilder()
     .onApplied(() => {
       subscribed = true;
-      if (!conn!.db.priest.priestId.find(ownId)) closeWith(DISMISSAL, 'Your priest has already left.');
+      if (!spectator && !conn!.db.priest.priestId.find(ownId)) closeWith(DISMISSAL, 'Your priest has already left.');
     })
     .subscribe([
       `SELECT * FROM priest WHERE x >= ${lo} AND x < ${hi}`,
@@ -251,6 +263,7 @@ function frame() {
   // Before there is a cathedral to show, the words are written on the dark.
   const ending = phase === 'closing' || phase === 'closed';
   if (phase === 'no-ticket' || !conn || !subscribed) {
+    if (spectator) return; // the welcome carries the title
     if (phase === 'no-ticket' || ending) titleOver(dctx, 1, closingTitle, closingSubtitle, Date.now());
     else titleOver(dctx, 1, TITLE, MOTTO, Date.now());
     return;
@@ -294,8 +307,13 @@ function frame() {
     drawables.push({ depth: pose.y, layer: LAYER.priest, x: pose.x, draw: (ctx: CanvasRenderingContext2D) => sprites!.draw(ctx, v, pose, feet[0], feet[1]) });
   }
 
+  // A candle's place is kept from when its priest sets off, but it is not on the stand
+  // until that priest kneels there.
+  const lighters = new Map<bigint, Action>();
+  for (const p of priests) if (p.row.state.tag === 'Departing' && p.row.candleId !== 0n) lighters.set(p.row.candleId, p.pose.action);
   const candles: (CandleView & { row: Candle; hit: [number, number, number, number] })[] = [];
   for (const c of conn.db.candle.iter()) {
+    if (!candleShown(ms(c.litAt), t, lighters.get(c.candleId))) continue;
     const view: CandleView = {
       arcade: c.arcade,
       slot: c.slot,
@@ -507,7 +525,9 @@ function frame() {
     const onStand = candles.filter((c) => c.arcade === openStand);
     const place = standPlacement(display.width, display.height);
     standPanel = { x: place.x - FRAME * place.k, y: place.y - FRAME * place.k, w: place.w + 2 * FRAME * place.k, h: place.h + 2 * FRAME * place.k };
-    const mx = mouse ? (mouse.x - place.x) / place.k : -1;
+    // Drawn as you would see it from your pews: see closeUpMirrored.
+    const mirrored = closeUpMirrored(standFacesLeft(cam, openStand));
+    const mx = mouse ? mirrorX((mouse.x - place.x) / place.k, mirrored) : -1;
     const my = mouse ? (mouse.y - place.y) / place.k : -1;
     const over = onStand.find((c) => {
       const [hx, hy, hw, hh] = slotHit(c as StandCandle);
@@ -516,7 +536,16 @@ function frame() {
     dctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
     dctx.fillRect(0, 0, display.width, display.height);
     dctx.imageSmoothingEnabled = false;
-    dctx.drawImage(renderStand(onStand, t, over?.slot, standSeed(openStand, 'left')), place.x, place.y, place.w, place.h);
+    const standImage = renderStand(onStand, t, over?.slot, standSeed(openStand, 'left'));
+    if (mirrored) {
+      dctx.save();
+      dctx.translate(place.x + place.w, place.y);
+      dctx.scale(-1, 1);
+      dctx.drawImage(standImage, 0, 0, place.w, place.h);
+      dctx.restore();
+    } else {
+      dctx.drawImage(standImage, place.x, place.y, place.w, place.h);
+    }
     const fk = FRAME * place.k;
     dctx.drawImage(renderFrame(), place.x - fk, place.y - fk, place.w + 2 * fk, place.h + 2 * fk);
     const burning = onStand.filter((c) => c.litAt <= t).length;
@@ -538,7 +567,7 @@ function frame() {
     .map((p) => ({ id: p.row.priestId, name: p.label!, leaving: p.row.state.tag === 'Departing', marked: marked.has(p.row.priestId) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   // (Once you have left, or are leaving, you are no longer among them: no key. Nor behind the close-up.)
-  if (ending || openStand !== undefined || own?.state.tag === 'Departing') {
+  if (spectator || ending || openStand !== undefined || own?.state.tag === 'Departing') {
     keyPanel = undefined;
     keyRows = [];
   } else {
@@ -555,7 +584,7 @@ function frame() {
   // The title over the cathedral as you arrive: five seconds, then it fades.
   introAt ??= Date.now();
   const sinceIntro = Date.now() - introAt;
-  if (!ending && sinceIntro < INTRO_HOLD_MS + INTRO_FADE_MS) {
+  if (!spectator && !ending && sinceIntro < INTRO_HOLD_MS + INTRO_FADE_MS) {
     titleOver(dctx, Math.min(1, 1 - (sinceIntro - INTRO_HOLD_MS) / INTRO_FADE_MS), TITLE, MOTTO, Date.now());
   }
   // And the dismissal as you leave, over the cathedral, which carries on behind it.
@@ -642,6 +671,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 setUpNotices();
+const showLanding = setUpLanding(GATE_URL);
 setUpMusic();
 void start();
 requestAnimationFrame(frame);

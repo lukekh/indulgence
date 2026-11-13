@@ -22,8 +22,9 @@ const oauth = new GateOAuthProvider({
   allowedRedirectOrigins: cfg.allowedRedirectOrigins,
 });
 sessions.onForgotten = (ghHash) => oauth.markForgotten(ghHash);
+sessions.gateUrl = cfg.publicUrl;
 
-const { app, closeIdleTransports } = createApp({ cfg, keys, oauth, sessions, isStoreReady: () => store.isReady() });
+const { app, closeIdleTransports } = createApp({ cfg, keys, oauth, sessions, isStoreReady: () => store.isReady(), occupiedXs: () => store.occupiedXs() });
 const http = app.listen(cfg.port, cfg.host, () => {
   console.log(`[gate] listening on ${cfg.host}:${cfg.port} as ${cfg.publicUrl}`);
 });

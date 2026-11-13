@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { slotPoint } from '../src/motion';
+import { standFacesLeft } from '../src/view';
 import { C } from '../../shared/constants';
-import { CLOSE_UP, heightAt, meltProfile, remaining, slotFoot, slotHit, standSeed, STAND_H, STAND_W, standPlacement, type StandCandle } from '../src/stand';
+import { closeUpMirrored, mirrorX, CLOSE_UP, heightAt, meltProfile, remaining, slotFoot, slotHit, standSeed, STAND_H, STAND_W, standPlacement, type StandCandle } from '../src/stand';
 
 const H = 3_600_000;
 const candle = (over: Partial<StandCandle> = {}): StandCandle => ({ slot: 0, size: 'votive', litAt: 0, expiresAt: 24 * H, ...over });
@@ -77,5 +79,37 @@ describe('the votive stand, close up', () => {
     for (let bay = -200; bay <= 200; bay++) seeds.add(standSeed(bay, 'left'));
     expect(seeds.size).toBe(401);
     for (const s of seeds) expect(Number.isInteger(s) && s >= 0).toBe(true);
+  });
+});
+
+describe('the close-up lines up with the nave', () => {
+  // Where a slot is drawn across the close-up, as seen on screen.
+  const across = (slot: number, mirrored: boolean) => mirrorX(slotFoot(slot)[0], mirrored);
+  const cam = { bay: 0 };
+
+  it('shows the altar end on your right for the stand to your left, and on your left for the one to your right', () => {
+    for (const arcade of [0, 1]) {
+      const facesLeft = standFacesLeft(cam, arcade);
+      const mirrored = closeUpMirrored(facesLeft);
+      // Slot 0 is the altar end in the nave: the smallest y, the top of the screen.
+      expect(slotPoint(arcade, 0, facesLeft).y).toBeLessThan(slotPoint(arcade, 9, facesLeft).y);
+      // Looking left from your pews the altar is on your right; looking right, on your left.
+      const altarOnRight = arcade <= cam.bay;
+      expect(across(0, mirrored) > across(9, mirrored)).toBe(altarOnRight);
+    }
+  });
+
+  it('keeps the tiers as they are: the front, lowest shelf nearest you in both', () => {
+    for (const facesLeft of [true, false]) {
+      expect(slotPoint(0, 10, facesLeft).lift).toBeGreaterThan(slotPoint(0, 0, facesLeft).lift);
+      expect(slotFoot(10)[1]).toBeLessThan(slotFoot(0)[1]);
+    }
+  });
+
+  it('mirrors about the middle of the stand, so every spike still has a slot', () => {
+    const xs = Array.from({ length: 10 }, (_, k) => slotFoot(k)[0]);
+    expect(xs.map((x) => mirrorX(x, true)).sort((a, b) => a - b)).toEqual(xs);
+    expect(mirrorX(mirrorX(40, true), true)).toBe(40);
+    expect(mirrorX(40, false)).toBe(40);
   });
 });

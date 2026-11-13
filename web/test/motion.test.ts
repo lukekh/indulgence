@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { C, seatPos } from '../../shared/constants';
-import { poseAt, along, pathLength, enterPath, departPaths, approachPoint, seatedAt, slotPoint, type PriestPlan } from '../src/motion';
+import { poseAt, along, pathLength, enterPath, departPaths, approachPoint, seatedAt, slotPoint, type PriestPlan, candleShown } from '../src/motion';
 import { cameraFor, project, standFacesLeft, viewportFor } from '../src/view';
 
 const seat = { bay: 0, row: 1, half: 0, seat: 3 };
@@ -142,5 +142,30 @@ describe('poses over time', () => {
     const plan: PriestPlan = { ...seat, state: 'Departing', since: 0 };
     expect(poseAt(plan, 0)).toMatchObject({ action: 'walk' });
     expect(poseAt(plan, C.PRIEST_REMOVE_AFTER_MS).action).toBe('gone');
+  });
+});
+
+describe('a candle on its stand', () => {
+  const litAt = 100_000;
+
+  it('is not there while its priest walks over, though its place is kept', () => {
+    expect(candleShown(litAt, litAt - 20_000, 'walk')).toBe(false);
+    expect(candleShown(litAt, litAt - 1, 'walk')).toBe(false);
+  });
+
+  it('appears when the priest kneels at the stand, and stays while it is lit', () => {
+    expect(candleShown(litAt, litAt - 9_000, 'kneel')).toBe(true);
+    expect(candleShown(litAt, litAt - 1_000, 'light')).toBe(true);
+  });
+
+  it('is there once lit, whoever is or is not in view', () => {
+    expect(candleShown(litAt, litAt)).toBe(true);
+    expect(candleShown(litAt, litAt + 5, 'walk')).toBe(true);
+    expect(candleShown(litAt, litAt + 3_600_000)).toBe(true);
+  });
+
+  it('with its priest out of view, appears as the lighting begins', () => {
+    expect(candleShown(litAt, litAt - C.LIGHT_CANDLE_MS - 1)).toBe(false);
+    expect(candleShown(litAt, litAt - C.LIGHT_CANDLE_MS)).toBe(true);
   });
 });

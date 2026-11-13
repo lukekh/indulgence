@@ -3,13 +3,11 @@
 // and lives in index.html; nothing from the database is ever put into the DOM.
 
 type Lang = 'la' | 'en';
-const CLOSE: Record<Lang, string> = { la: 'Claude ✕', en: 'Close ✕' }; // claude: "close!"
 
 export function setUpNotices(doc: Document = document) {
   const dialog = doc.getElementById('notice') as HTMLDialogElement | null;
   if (!dialog) return;
   const title = dialog.querySelector<HTMLElement>('#notice-title')!;
-  const close = dialog.querySelector<HTMLButtonElement>('[data-close]')!;
   const body = dialog.querySelector<HTMLElement>('.body')!;
   let notice = 'repudiationes';
   // Latin unless you have asked for English since the page opened.
@@ -22,8 +20,6 @@ export function setUpNotices(doc: Document = document) {
       if (on) title.textContent = s.dataset.title ?? '';
     }
     for (const b of dialog.querySelectorAll<HTMLButtonElement>('[data-lang]')) b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
-    close.textContent = CLOSE[lang];
-    close.setAttribute('aria-label', lang === 'la' ? 'Claude (close)' : 'Close');
     dialog.lang = lang;
   };
 
@@ -41,8 +37,8 @@ export function setUpNotices(doc: Document = document) {
       show();
     });
   }
-  close.addEventListener('click', () => dialog.close());
-  // A click on the backdrop (outside the panel) closes it too; Escape is built in.
+  // There is no close button: a click on the backdrop (outside the panel) closes it, and
+  // Escape is built in.
   dialog.addEventListener('click', (e) => {
     const r = dialog.getBoundingClientRect();
     if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close();

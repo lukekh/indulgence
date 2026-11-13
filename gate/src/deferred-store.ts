@@ -49,6 +49,9 @@ export class DeferredStore implements Store {
   async forget(ghHash: string) {
     return this.s.forget(ghHash);
   }
+  occupiedXs() {
+    return this.inner?.occupiedXs() ?? [];
+  }
   async priestX(priestId: bigint, timeoutMs: number) {
     return this.inner ? this.inner.priestX(priestId, timeoutMs) : undefined;
   }

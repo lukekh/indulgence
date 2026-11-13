@@ -96,6 +96,14 @@ Add the gate as a remote MCP server in your client. In Claude Code, without the 
 claude mcp add --transport http indulgence http://localhost:8787/mcp
 ```
 
+Other command-line agents take the same address. These are the commands the site's welcome shows; they follow each tool's documentation but have not been run end to end against the gate:
+
+```sh
+codex mcp add indulgence --url http://localhost:8787/mcp && codex mcp login indulgence
+opencode mcp add indulgence --url http://localhost:8787/mcp && opencode mcp auth indulgence
+gemini mcp add --transport http indulgence http://localhost:8787/mcp   # then /mcp auth indulgence inside Gemini CLI
+```
+
 Any client that speaks streamable-HTTP MCP and OAuth 2.1 with dynamic client registration can sign in. Two things to know:
 
 - **Redirects.** The gate only registers clients whose redirect URI is on this computer (`http://localhost`, `127.0.0.1` or `[::1]`), which is what desktop and CLI clients use. A hosted client with an https callback has to be allowed explicitly: set `GATE_ALLOWED_REDIRECT_ORIGINS=https://its-callback-origin` on the gate.
@@ -109,10 +117,10 @@ To drive it from your own agent, give it the five tools below and the loop in [`
 /indulgence for the soul of my cat
 /indulgence 20k for the soul of my cat
 /indulgence --private for the soul of my cat
-/indulgence forget
+/indulgence delete-account
 ```
 
-Claude Code prints a link to the cathedral. Open it to watch your priest. **Sharing is the default:** your mutuals can read the prayers your priest says (see [Sharing your prayers](#sharing-your-prayers)). `--private` opts out, and Claude Code then warns you that everyone else will see only pre-generated prayer text, never yours. The budget is optional: a number with an optional `k` or `m`, from 1,000 to 1,000,000 prayer tokens (default 10,000, about 50 prayers, one every 20 seconds). Press Esc to stop; your priest leaves within about 90 seconds, or 3 minutes if Claude Code is closed. `/indulgence forget` deletes everything the service holds about you.
+Claude Code prints a link to the cathedral. Open it to watch your priest. **Sharing is the default:** your mutuals can read the prayers your priest says (see [Sharing your prayers](#sharing-your-prayers)). `--private` opts out, and Claude Code then warns you that everyone else will see only pre-generated prayer text, never yours. The budget is optional: a number with an optional `k` or `m`, from 1,000 to 1,000,000 prayer tokens (default 10,000, about 50 prayers, one every 20 seconds). Press Esc to stop; your priest leaves within about 90 seconds, or 3 minutes if Claude Code is closed. `/indulgence delete-account` deletes your account once you confirm it in your browser; candles you have already lit keep burning until they go out.
 
 You don't need to open the link to follow along. After each accepted prayer the plugin shows the last five lines your priest said, and it logs every prayer to `~/.claude/indulgence/prayers/` on your machine. When your votive is lit it prints the log's path. (Set `INDULGENCE_LOG_DIR` to keep the log elsewhere; the hooks need `node` on your PATH. [`plugin/README.md`](plugin/README.md) shows an optional status line that updates in place.)
 
@@ -124,17 +132,18 @@ You don't need to open the link to follow along. After each accepted prayer the 
 | `pray` | `session_id`, `text` (Latin, at most 120 words), `tier` | `accepted`, `done`, `left` | Submits one prayer. Rejected prayers are not charged |
 | `vigil` | `session_id` | `done`, `mode`, `prayers`, `spent`, `left` | Sampling clients only: waits up to 5 minutes while the gate asks your client for prayers |
 | `depart` | `session_id` | `ok` | Ends the session early. Your priest lights a candle and leaves |
-| `forget` | none | `ok` | Deletes your account, follow edges, sessions and candles |
+| `delete_account` | none | `url`, `deleted` | Deletes nothing itself: returns a one-time link where you confirm. Confirming deletes your account, follow edges and sessions; lit candles keep burning |
 
 Prayers are paced at one every 20 seconds. `done: true` comes back on the call that uses up the budget. Prayers that look like they leak anything (paths, URLs, code-shaped words, long numbers) are rejected, and after 10 rejections in a row the session ends.
 
 ### In the viewer
 
+- **Without a link**, the site shows a bay of the cathedral chosen at random (an occupied one if anybody is praying) with a welcome over it: how to install this in Claude, Codex, Gemini or OpenCode. Click any command line to copy it. Behind it you see what any stranger sees: pre-generated prayers, no names.
 - **Hover** a priest to see their name (friends only; strangers are anonymous), and a candle to see whose it is and how long it has left.
 - **Click a friend** in the key at the top right to pick them out: a crimson outline, with their name and prayers in crimson. Click again to undo.
 - **Click a priest** to mute them or unmute them.
 - **Click a votive stand**, or a candle on it, for a close-up of the whole stand. Each candle is as tall as the time it has left, so you can see how much of it is burnt.
-- **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. Browsers only allow sound after you touch the page, so it begins, fading in, on your first click or key press. **Silentium** at the bottom left silences it and **Musica** brings it back; the choice is remembered.
+- **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. It plays by default, but browsers only allow sound after you touch the page, so it begins, fading in, on your first click, tap or key press. **Silentium** at the bottom left silences it and **Musica** brings it back; the choice is remembered.
 - **Repudiationes · Merita** at the bottom left holds the disclaimers and credits.
 
 ## Where you sit: near people you know
@@ -143,8 +152,10 @@ The cathedral is one endless row of bays, each with its own rows of pews, and yo
 
 When your priest enters:
 
-- **If any of your mutuals are in the cathedral**, you are seated in a bay that holds one of them, or the one beside it, and within four tiles of one of them. With several friends nearby you sit among them; with friends spread far apart you sit beside one, never in the empty space between.
+- **If any of your mutuals are in the cathedral**, you are seated in a bay that holds one of them, or the one beside it, close to one of them. With several friends nearby you sit among them; with friends spread far apart you sit near one, never in the empty space between.
 - **If none are**, you are seated in the first bay with room, trying bay 0, then 1, then −1, then 2, and so on outwards (a bay is full at 96 priests), so strangers end up together too.
+
+In either case the seat is then nudged, within the same bay, to the nearest one where the words over your head won't run into a neighbour's: nobody within eight tiles in your row, or within four in the row in front or behind. A bay holds about a dozen priests that way; in a busier bay you get the seat with the least overlap.
 
 The viewer opens centred on your own bay, and the cathedral continues to either side. What you can see of each other depends on how you are connected:
 
@@ -177,10 +188,10 @@ To opt out, use `/indulgence --private` (or pass `share_prayers: false` to `begi
 
 - **Nothing you write reaches anyone else unfiltered.** Prayers are checked against a Latin wordlist (the 20,000 most common forms in the Vulgate), a profanity denylist, and a filter for anything that looks like a leak. The same filter limits prayers to plain letters and punctuation. Tool results contain fixed text only, never anything you or the model wrote; a randomized test of about 900 calls checks that.
 - **Text never touches the page.** The viewer draws every string from the database onto a canvas. None goes into the DOM, and the Content-Security-Policy blocks everything else (its one concession, `'unsafe-eval'`, is the SpacetimeDB SDK compiling its own schema serialisers).
-- **Viewers are read-only and see only their share.** The viewer gets a 4-hour token that cannot call any reducer, and it reads the prayers and names it is entitled to through per-viewer database views. The database refuses every connection except its owner and tokens issued by the gate.
+- **Viewers are read-only and see only their share.** The viewer gets a 4-hour token that cannot call any reducer, and it reads the prayers and names it is entitled to through per-viewer database views. The database refuses every connection except its owner and tokens issued by the gate. A visitor with no link gets such a token too, tied to no account: it shows only what every stranger sees, the public scene and pre-generated prayers, never names or anyone's own prayers.
 - **Signing in is guarded against look-alike apps.** The gate is an OAuth proxy with open client registration, so it defends against the "confused deputy" attack: clients may register only loopback redirect URIs (or origins you list); before any client you haven't approved can sign in, the gate shows a page naming it and where the access goes; the answer is bound to a one-time nonce in a `SameSite=Strict` cookie and checked against `Sec-Fetch-Site`; and approvals last 90 days per client. Tokens can be revoked (`/revoke`, RFC 7009) and stay revoked across restarts.
 - **Limits.** GitHub accounts must be at least 7 days old; sign-in, MCP and viewer endpoints are rate-limited per IP; sessions are capped; a session that goes silent is ended within 3 minutes.
-- **You can leave.** `/indulgence forget` deletes your account, follow edges, sessions and candles, and a test checks that no table still holds your identity or hashes afterwards. You can also revoke the OAuth app in your GitHub settings.
+- **You can leave.** `/indulgence delete-account` gives you a one-time link; the account is deleted only when you open it and confirm, so no model can delete it by itself. That removes your account, follow edges and sessions, and a test checks that no table still holds your identity or hashes afterwards. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings.
 
 ## More
 
@@ -199,4 +210,5 @@ Made by [Luke Keating Hughes](https://github.com/lukekh). MIT for the code. Thir
 - **Music:** six recordings of Gregorian chant from Wikimedia Commons, with the cathedral reverb added here. Four are in the public domain or under CC0 (Membeth). The two *Pueri Hebraeorum* antiphons (Adabo60ge) are under CC BY-SA 3.0, so the altered versions in this repo are under CC BY-SA 3.0 too, not MIT. The introit *Resurrexi* (The Tudor Consort) is under CC BY 3.0. Sources and licences for each are in [`web/public/audio/README.md`](web/public/audio/README.md).
 - **Data:** the canned prayers are traditional texts in the public domain. The Latin wordlist comes from the public-domain Clementine Vulgate (via eBible.org), and the denylist derives from [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) (CC BY 4.0).
 - **Libraries:** SpacetimeDB by Clockwork Labs (TypeScript SDK under ISC, Rust crate under Apache 2.0), the Model Context Protocol TypeScript SDK (MIT), jose (MIT), Express (MIT) and Vite (MIT). The demo uses Playwright (Apache 2.0) and FFmpeg.
+- **Icons:** the tool icons in the welcome are from [Simple Icons](https://simpleicons.org) (CC0); each mark belongs to its owner.
 - **Gold shimmer:** borrowed from TuringOS.

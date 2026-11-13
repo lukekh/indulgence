@@ -66,6 +66,11 @@ export function redeemTicket(ticket: string) {
   return post('/viewer-token', { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket }) });
 }
 
+/** For a visitor without a link: a view-only grant for a bay chosen by the gate, with no priest. */
+export function spectate() {
+  return post('/spectator-token', {});
+}
+
 export function refreshGrant(token: string) {
   return post('/viewer-token/refresh', { headers: { Authorization: `Bearer ${token}` } });
 }

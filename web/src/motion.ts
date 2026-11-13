@@ -67,6 +67,18 @@ export function slotPoint(arcade: number, slot: number, facesLeft = false): { x:
   };
 }
 
+/**
+ * Whether a candle is on its stand yet. Its place is kept from the moment its priest sets
+ * off, but the candle itself is only set down once the priest is kneeling at the stand;
+ * `lighter` is what that priest is doing now, if it is in view. Without the priest to go
+ * by, the candle appears as the lighting begins.
+ */
+export function candleShown(litAt: number, now: number, lighter?: Action): boolean {
+  if (now >= litAt) return true;
+  if (lighter !== undefined) return lighter === 'kneel' || lighter === 'light';
+  return now >= litAt - C.LIGHT_CANDLE_MS;
+}
+
 /** Where a priest stands to light a candle: beside the stand, on the side facing its bay. */
 export function approachPoint(bay: number, arcade: number, slot: number): Pt {
   const y = Math.round(slotPoint(arcade, slot).y);

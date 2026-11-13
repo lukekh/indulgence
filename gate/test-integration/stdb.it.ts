@@ -165,7 +165,12 @@ const pa = row(va, ai.priestId);
 const pb = row(va, bi.priestId);
 assert.equal(pa.bay, pb.bay, 'mutuals share a bay');
 const dist = Math.abs(pa.x - pb.x) + Math.abs(pa.y - pb.y);
-assert.ok(dist <= 2, `mutuals sit together (distance ${dist})`);
+// The second seating pass keeps them in the bay but far enough apart that their prayers do
+// not run into each other: not within 8 tiles in a row, nor 4 in the next row.
+const rowsApart = Math.abs(pa.row - pb.row);
+const across = Math.abs(pa.x - pb.x);
+assert.ok(rowsApart >= 2 || across >= (rowsApart === 0 ? 8 : 4), `mutuals' prayers would collide (${across} across, ${rowsApart} rows)`);
+assert.ok(dist <= 8, `mutuals sit near each other (distance ${dist})`);
 assert.deepEqual([pa.x, pa.y], seatPos(pa.bay, pa.row, pa.half, pa.seat));
 ok(`two mutuals joining one after the other share bay ${pa.bay}, ${dist} tile(s) apart`);
 
@@ -277,7 +282,7 @@ ok('opting out: only the owner reads the prayers; everyone else gets only the ti
 // --- forget ------------------------------------------------------------------------------------
 const before = sql(`SELECT * FROM account WHERE gh_hash = '${keys.ghHash(users.alice.id)}'`);
 assert.match(before, /alice/);
-assert.equal((await sessions.forget(acct(users.alice))).hasOwnProperty('ok'), true);
+assert.equal((await sessions.forget(acct(users.alice).ghHash)).hasOwnProperty('ok'), true);
 await sleep(300);
 const h = keys.ghHash(users.alice.id);
 for (const q of [
@@ -285,14 +290,16 @@ for (const q of [
   `SELECT * FROM follow_edge WHERE owner_hash = '${h}'`,
   `SELECT * FROM follow_edge WHERE other_hash = '${h}'`,
   `SELECT * FROM session WHERE session_id = '${a.session_id}'`,
-  `SELECT * FROM candle WHERE label = 'Alice Liddell'`,
   `SELECT * FROM revoked_grant WHERE gh_hash = '${h}'`,
 ]) {
   const out = sql(q);
   assert.ok(!/alice|Alice|[0-9a-f]{32}/.test(out.split('\n').slice(2).join('\n')), `forget left rows: ${q}\n${out}`);
 }
-assert.ok(!vb.conn.db.candle.candleId.find(departing.candleId));
-ok('forget deletes the account, follow edges (both directions), sessions and candles');
+// Her candle is not put out: it stays on its stand, but nothing private says whose it is.
+assert.ok(vb.conn.db.candle.candleId.find(departing.candleId), 'the candle she lit is still burning');
+assert.match(sql(`SELECT * FROM candle WHERE candle_id = ${departing.candleId}`), /Alice Liddell/);
+assert.ok(!/0x[0-9a-f]{64}/.test(sql(`SELECT * FROM candle_owner WHERE candle_id = ${departing.candleId}`).split('\n').slice(2).join('\n')), 'candle_owner row is gone');
+ok('deleting the account removes it, its follow edges (both directions) and sessions, and leaves its candles burning');
 
 // --- removal after the departure animation --------------------------------------------------------
 console.log(`  … waiting ${C.PRIEST_REMOVE_AFTER_MS / 1000}s for remove_priest`);

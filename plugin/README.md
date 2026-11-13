@@ -17,14 +17,14 @@ The first run opens a page in your browser that names the application asking for
 /indulgence for the soul of my cat
 /indulgence 20k for the soul of my cat
 /indulgence --private for the soul of my cat
-/indulgence forget
+/indulgence delete-account
 ```
 
 - **Sharing is the default.** Your mutuals can read the prayers your priest says. `--private` opts out: everyone else then sees only pre-generated prayer text, never yours, and Claude Code tells you so when it starts.
 - The budget is optional: a number with an optional `k` or `m` suffix, from 1,000 to 1,000,000 prayer tokens. The default is 10,000, which is about 50 prayers, one every 20 seconds (about 17 minutes).
 - Claude Code prints a link to the cathedral. Open it to watch your priest. Your mutual follows on GitHub sit near you, and you can read each other's prayers (unless either of you opted out with `--private`).
 - Press Esc to stop. Your priest leaves within about 90 seconds, or 3 minutes if Claude Code is closed.
-- `/indulgence forget` deletes your account, follow edges, sessions and candles.
+- `/indulgence delete-account` prints a link. Open it and confirm to delete your account, follow edges and sessions. Candles you have already lit keep burning, with your name on them, until they go out (within two days).
 
 Prayers are written by a `priest` subagent that can use only the `pray` tool, and it does not see your CLAUDE.md. Prayers that look like they leak anything (paths, URLs, code-shaped words, long numbers) are rejected and not charged.
 
@@ -59,10 +59,10 @@ The service keeps the least data it needs to seat priests and burn candles. Pray
 
 | Data | Why | Who can see it | Kept for |
 | --- | --- | --- | --- |
-| GitHub login | Identity; candle label | Everyone, on your candle while it burns | Until you run `forget` |
-| GitHub display name | Candle and hover label, only if you opt in | Everyone on your candle; mutuals on hover | Until you run `forget` |
-| GitHub numeric ID, stored as a keyed hash | Linking sessions to your account | No one | Until `forget` |
-| Mutual follows, stored as keyed hashes | Seating you near friends | No one; the server only | Replaced at each sign-in; deleted by `forget` |
+| GitHub login | Identity; candle label | Everyone, on your candle while it burns | Until you delete your account; on a candle already lit, until it burns out |
+| GitHub display name | Candle and hover label, only if you opt in | Everyone on your candle; mutuals on hover | Until you delete your account; on a candle already lit, until it burns out |
+| GitHub numeric ID, stored as a keyed hash | Linking sessions to your account | No one | Until you delete your account |
+| Mutual follows, stored as keyed hashes | Seating you near friends | No one; the server only | Replaced at each sign-in; deleted with your account |
 | Intention text | Prompt for your prayers | Only you | End of session |
 | Prayer text | Display | You; your mutuals, unless you opted out with `--private` | Until your priest has left |
 | Your copy of your priest's prayers | Your record | Only you: it is a file on your machine, never sent anywhere | Until you delete it (`~/.claude/indulgence`) |
@@ -82,4 +82,4 @@ Mutuals come from your public follow lists, using the first 5,000 accounts you f
 - **Generated text.** Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.
 - **Sharing.** By default your mutuals can read your prayers. The model that writes them may be able to see your session. Obvious leaks are filtered (see the README for what the filter can and can't stop), but none can be ruled out. To opt out, use `/indulgence --private`: everyone else then sees only pre-generated prayer text, never yours.
 - **Independent project.** Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).
-- **Deletion.** `/indulgence forget` deletes your account, follow edges, sessions and candles. You can also revoke the OAuth app in your GitHub settings at any time.
+- **Deletion.** `/indulgence delete-account` deletes your account, follow edges and sessions, once you confirm it in your browser. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings at any time.

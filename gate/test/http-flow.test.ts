@@ -1,7 +1,7 @@
 // End to end over HTTP with fakes for GitHub and SpacetimeDB: dynamic client registration,
 // the page naming the client, PKCE authorization through GitHub and the consent screen,
 // token exchange, refresh and revocation, the MCP endpoint via the official client,
-// viewer tokens, and forget.
+// viewer tokens, and deleting the account.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import http from 'node:http';
@@ -13,7 +13,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Keys } from '../src/keys.js';
 import { SessionManager } from '../src/sessions.js';
 import { GateOAuthProvider } from '../src/oauth/provider.js';
-import { createApp } from '../src/server.js';
+import { C } from '../../shared/constants.js';
+import { createApp, spectatorX } from '../src/server.js';
 import type { GateConfig } from '../src/config.js';
 import { FakeGitHub, FakeStore } from './fakes.js';
 
@@ -63,7 +64,8 @@ beforeAll(async () => {
   const sessions = new SessionManager(store, cfg.siteUrl);
   const oauth = new GateOAuthProvider({ keys, store, github, publicUrl: base });
   sessions.onForgotten = (h) => oauth.markForgotten(h);
-  const { app } = createApp({ cfg, keys, oauth, sessions, isStoreReady: () => true });
+  sessions.gateUrl = base;
+  const { app } = createApp({ cfg, keys, oauth, sessions, isStoreReady: () => true, occupiedXs: () => store.occupiedXs() });
   handler = app;
 });
 
@@ -236,7 +238,7 @@ describe('sign-in, MCP and viewer tokens', () => {
     mcp = new Client({ name: 'test', version: '1.0.0' });
     await mcp.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${access}` } } }));
     const { tools } = await mcp.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['begin', 'depart', 'forget', 'pray', 'vigil']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['begin', 'delete_account', 'depart', 'pray', 'vigil']);
   });
 
   let ticket = '';
@@ -285,6 +287,32 @@ describe('sign-in, MCP and viewer tokens', () => {
     expect(res.status).toBe(200);
   });
 
+  it('gives a visitor with no link a view-only token for an occupied bay, tied to no account', async () => {
+    store.occupied = [1234];
+    const res = await fetch(`${base}/spectator-token`, { method: 'POST', headers: { Origin: 'https://site.test' } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://site.test');
+    const body = (await res.json()) as { token: string; px: number; priest_id: string };
+    expect(body).toMatchObject({ px: 1234, priest_id: '0' });
+    const claims = decodeJwt(body.token);
+    expect(claims).toMatchObject({ iss: base, aud: 'indulgence', role: 'viewer', tt: 'viewer', px: 1234, pid: '0' });
+    expect(claims.sub).toMatch(/^spectator:[0-9a-f-]{36}$/);
+    expect(claims.sub).not.toBe(keys.viewerSub(1));
+    // It refreshes to the same bay, and is no more an MCP token than any viewer token.
+    const again = await fetch(`${base}/viewer-token/refresh`, { method: 'POST', headers: { Authorization: `Bearer ${body.token}` } });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { px: number }).px).toBe(1234);
+    const mcpRes = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${body.token}` }, body: '{}' });
+    expect(mcpRes.status).toBe(401);
+    store.occupied = [];
+  });
+
+  it('shows a visitor an empty bay near the first when nobody is praying', () => {
+    expect(spectatorX([10, 20, 30], () => 0.5)).toBe(20);
+    const xs = [0, 0.5, 0.999].map((r) => spectatorX([], () => r));
+    expect(xs.map((x) => Math.floor(x / C.BAY_W))).toEqual([-12, 0, 12]);
+  });
+
   it('refresh tokens keep their original 30-day expiry', async () => {
     const t = await token({ grant_type: 'refresh_token', refresh_token: refresh, client_id: clientId });
     expect(t.status).toBe(200);
@@ -308,11 +336,47 @@ describe('sign-in, MCP and viewer tokens', () => {
     expect(store.departs).toContain(sid);
   });
 
-  it('forget deletes the account and invalidates its tokens', async () => {
+  it('delete_account deletes nothing; confirming on its page deletes the account and invalidates its tokens', async () => {
     const c = new Client({ name: 'test', version: '1.0.0' });
     await c.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${access}` } } }));
-    const res = await c.callTool({ name: 'forget', arguments: {} });
-    expect(res.structuredContent).toEqual({ ok: true });
+    expect((await c.callTool({ name: 'forget', arguments: {} })).isError).toBe(true); // the old name is gone
+    const res = await c.callTool({ name: 'delete_account', arguments: {} });
+    const out = res.structuredContent as { url: string; deleted: boolean };
+    expect(out.deleted).toBe(false);
+    expect(out.url).toMatch(new RegExp(`^${base}/delete-account\\?t=[A-Za-z0-9_-]{22}$`));
+    expect(store.forgotten).toEqual([]);
+    // Still signed in.
+    expect((await c.callTool({ name: 'depart', arguments: { session_id: 'none' } })).isError).toBeFalsy();
+
+    // The page asks; looking at it deletes nothing, however often.
+    for (let i = 0; i < 2; i++) {
+      const page = await fetch(out.url);
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain('Delete my account');
+      expect(html).toContain('keep burning');
+    }
+    expect(store.forgotten).toEqual([]);
+    const form = (fields: Record<string, string>) =>
+      fetch(`${base}/delete-account`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields) });
+    const link = new URL(out.url).searchParams.get('t')!;
+    // Neither a made-up link nor a post without the button deletes anything.
+    expect((await form({ t: 'x'.repeat(22), decision: 'delete' })).status).toBe(410);
+    expect((await form({ t: link })).status).toBe(400);
+    expect(store.forgotten).toEqual([]);
+
+    // A second request replaces the first link.
+    const res2 = await c.callTool({ name: 'delete_account', arguments: {} });
+    const url2 = (res2.structuredContent as { url: string }).url;
+    expect((await fetch(out.url)).status).toBe(410);
+    const link2 = new URL(url2).searchParams.get('t')!;
+
+    // Pressing the button deletes it, once.
+    const done = await form({ t: link2, decision: 'delete' });
+    expect(done.status).toBe(200);
+    expect(await done.text()).toContain('Your account is deleted');
+    expect(store.forgotten).toEqual([keys.ghHash(1)]);
+    expect((await form({ t: link2, decision: 'delete' })).status).toBe(410);
     expect(store.forgotten).toEqual([keys.ghHash(1)]);
     const after = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${access}` }, body: '{}' });
     expect(after.status).toBe(401);

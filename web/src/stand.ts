@@ -82,6 +82,23 @@ export function slotFoot(slot: number): [number, number] {
   return [SLOT_X0 + k * SLOT_STEP, FRONT_SHELF_Y - tier * TIER_STEP];
 }
 
+/**
+ * Whether the close-up is drawn mirrored, so that it shows the stand as you would see it
+ * standing before it. In the nave a stand's slots run from the altar end (slot 0, at the top
+ * of the screen) down the arcade. You look at a stand from your own column of pews: one on
+ * your left you face looking left, with the altar on your right, so slot 0 is at the right
+ * of the close-up; one on your right, at the left. `facesLeft` is the nave's
+ * `standFacesLeft`: true for the stands to the right of your pews.
+ */
+export function closeUpMirrored(facesLeft: boolean): boolean {
+  return !facesLeft;
+}
+
+/** An x in the close-up as drawn on screen, for one drawn mirrored (and back again). */
+export function mirrorX(x: number, mirrored: boolean): number {
+  return mirrored ? STAND_W - x : x;
+}
+
 /** The area to hover for a candle (generous, and at least its full height), base px. */
 export function slotHit(c: StandCandle): [number, number, number, number] {
   const [x, y] = slotFoot(c.slot);

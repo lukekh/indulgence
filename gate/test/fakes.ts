@@ -97,6 +97,10 @@ export class FakeStore implements Store {
     for (const s of this.sessions.values()) if (s.ghHash === ghHash) s.live = false;
     this.accounts.delete(ghHash);
   }
+  occupied: number[] = [];
+  occupiedXs() {
+    return this.occupied;
+  }
   async priestX(priestId: bigint) {
     return this.priests.get(priestId)?.x;
   }

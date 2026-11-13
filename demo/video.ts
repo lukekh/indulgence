@@ -329,6 +329,11 @@ async function main() {
       const b = await viewer.locator(selector).boundingBox();
       return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : undefined;
     };
+    // The panel has no close button: a click beside it, on the backdrop, closes it.
+    const besideNotice = async () => {
+      const b = await viewer.locator('#notice').boundingBox();
+      return b ? { x: Math.min(W - 20, b.x + b.width + 60), y: b.y + b.height / 2 } : undefined;
+    };
     await m.to(await centre('button[data-open="repudiationes"]'), 700);
     await pause(700);
     await m.click();
@@ -336,14 +341,14 @@ async function main() {
     await m.to(await centre('button[data-lang="en"]'), 700);
     await m.click();
     await pause(2600);
-    await m.to(await centre('[data-close]'), 600);
+    await m.to(await besideNotice(), 600);
     await m.click();
     await pause(500);
     await m.to(await centre('button[data-open="merita"]'), 900);
     await pause(600);
     await m.click();
     await pause(3200);
-    await m.to(await centre('[data-close]'), 600);
+    await m.to(await besideNotice(), 600);
     await m.click();
     await pause(400);
     await m.to({ x: W * 0.9, y: H * 0.88 }, 1000);
