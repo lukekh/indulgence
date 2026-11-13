@@ -126,14 +126,23 @@ function block(doc: Document, lines: string[], prompt: Prompt, label: string): H
   return box;
 }
 
+export interface Landing {
+  /** Show the welcome: from then on it is the page, and has nothing to close it with. */
+  show(): void;
+  /**
+   * Step aside while something drawn on the cathedral itself is open over it (a votive
+   * stand seen close up), and come back when that closes.
+   */
+  standAside(aside: boolean): void;
+}
+
 /**
- * Wire up the welcome panel. Returns a function that shows it; until that is called the
- * panel stays hidden (a visitor with a link never sees it). Once shown it stays: it is the
- * page, and has nothing to close it with.
+ * Wire up the welcome panel. Until `show` is called the panel stays hidden (a visitor
+ * with a link never sees it).
  */
-export function setUpLanding(gate: string, doc: Document = document): () => void {
+export function setUpLanding(gate: string, doc: Document = document): Landing {
   const panel = doc.getElementById('landing');
-  if (!panel) return () => {};
+  if (!panel) return { show: () => {}, standAside: () => {} };
   const list = agents(gate);
   const tabs = [...panel.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
   const setup = panel.querySelector<HTMLElement>('[data-setup]');
@@ -175,7 +184,20 @@ export function setUpLanding(gate: string, doc: Document = document): () => void
   });
   choose(list[0]!.id);
 
-  return () => {
-    panel.hidden = false;
+  let shown = false;
+  let aside = false;
+  const apply = () => {
+    panel.hidden = !shown || aside;
+  };
+  return {
+    show: () => {
+      shown = true;
+      apply();
+    },
+    standAside: (on) => {
+      if (on === aside) return;
+      aside = on;
+      apply();
+    },
   };
 }

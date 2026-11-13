@@ -123,7 +123,7 @@ async function start() {
     // No link: the welcome, over whichever bay the gate picks (or over the dark, if the
     // gate cannot be reached). That grant is not kept, so a reload shows another bay.
     spectator = true;
-    showLanding();
+    landing.show();
     grant = await spectate().catch(() => undefined);
   }
   sprites = await spritesLoading;
@@ -521,6 +521,8 @@ function frame() {
 
   // --- a votive stand, close up ------------------------------------------------------------
   standPanel = undefined;
+  // The close-up opens over the welcome, which comes back when it closes.
+  landing.standAside(openStand !== undefined);
   if (openStand !== undefined) {
     const onStand = candles.filter((c) => c.arcade === openStand);
     const place = standPlacement(display.width, display.height);
@@ -671,7 +673,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 setUpNotices();
-const showLanding = setUpLanding(GATE_URL);
+const landing = setUpLanding(GATE_URL);
 setUpMusic();
 void start();
 requestAnimationFrame(frame);
