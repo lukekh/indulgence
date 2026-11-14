@@ -238,7 +238,7 @@ async function main() {
     run(process.execPath, [vite, 'build', '--outDir', webOut, '--emptyOutDir', '--logLevel', 'warn'], {
       cwd: path.join(ROOT, 'web'),
       log,
-      env: { ...ENV, VITE_GATE_URL: `http://localhost:${gatePort}`, VITE_DEMO_THURIFER_SHIFT_MS: String(Math.round(shift)), VITE_MUSIC: 'off' },
+      env: { ...ENV, VITE_GATE_URL: `http://localhost:${gatePort}`, VITE_DEMO_THURIFER_SHIFT_MS: String(Math.round(shift)), VITE_MUSIC: 'off', VITE_CONGREGATION: 'off' },
     });
     start(process.execPath, [vite, 'preview', '--outDir', webOut, '--port', String(webPort), '--strictPort', '--host', '127.0.0.1'], { cwd: path.join(ROOT, 'web'), log });
     await waitFor(`http://127.0.0.1:${webPort}/`, 30_000);

@@ -5,14 +5,14 @@ describe('the welcome', () => {
   const list = agents('https://gate.test');
   const lines = (a: (typeof list)[number]) => [...a.setup, ...(a.alternative?.setup ?? [])].flatMap((s) => s.lines).concat(a.pray, a.alternative?.pray ?? []);
 
-  it('has a tab for each agent, in alphabetical order, Claude first', () => {
-    expect(list.map((a) => a.name)).toEqual(['Claude', 'Codex', 'Gemini', 'OpenCode']);
-    expect(list.map((a) => a.id)).toEqual(['claude', 'codex', 'gemini', 'opencode']);
+  it('has a tab for each agent, in alphabetical order', () => {
+    expect(list.map((a) => a.name)).toEqual(['Antigravity', 'Claude', 'Codex', 'OpenCode']);
+    expect(list.map((a) => a.id)).toEqual(['antigravity', 'claude', 'codex', 'opencode']);
     expect(new Set(list.map((a) => a.name)).size).toBe(list.length);
   });
 
   it('installs the plugin in Claude Code and prays with the command, all typed inside it', () => {
-    const claude = list[0]!;
+    const claude = list.find((a) => a.id === 'claude')!;
     expect(claude.setup).toHaveLength(1);
     expect(claude.setup[0]!.lines).toEqual(['/plugin marketplace add lukekh/indulgence', '/plugin install indulgence@indulgence']);
     expect(claude.setup[0]!.prompt).toBe('agent');
@@ -20,7 +20,7 @@ describe('the welcome', () => {
   });
 
   it('offers Claude Code a way in without the plugin: the gate as an MCP server, then a prayer in words', () => {
-    const other = list[0]!.alternative!;
+    const other = list.find((a) => a.id === 'claude')!.alternative!;
     expect(other.setup.map((s) => [s.prompt, s.lines])).toEqual([
       ['shell', ['claude mcp add --transport http indulgence https://gate.test/mcp']],
       ['agent', ['/mcp']],
@@ -37,17 +37,16 @@ describe('the welcome', () => {
     expect(codex.alternative!.setup[0]!.lines[0]).toBe('codex mcp add indulgence --url https://gate.test/mcp');
   });
 
-  it('installs the Gemini extension from this repo, signs in inside the Gemini CLI, and prays with its command', () => {
-    const gemini = list.find((a) => a.id === 'gemini')!;
-    expect(gemini.setup.map((s) => [s.prompt, s.lines])).toEqual([
-      ['shell', ['gemini extensions install https://github.com/lukekh/indulgence']],
-      ['agent', ['/mcp auth indulgence']],
+  it('installs the Antigravity plugin from a clone of this repo, signs in inside the Antigravity CLI, and prays in words', () => {
+    const anti = list.find((a) => a.id === 'antigravity')!;
+    expect(anti.setup.map((s) => [s.prompt, s.lines])).toEqual([
+      ['shell', ['git clone https://github.com/lukekh/indulgence', 'agy plugin install indulgence/antigravity-plugin']],
+      ['agent', ['/plugin']],
     ]);
-    expect(gemini.setup[0]!.after).toBe(', in your terminal run');
-    const second = gemini.setup[1]!;
-    expect(second.before + second.accent + second.after).toBe('Then inside the Gemini CLI run');
-    expect(gemini.pray).toEqual(['/indulgence pray for my immortal soul']);
-    expect(gemini.alternative!.setup[0]!.lines[0]).toBe('gemini mcp add --transport http indulgence https://gate.test/mcp');
+    const second = anti.setup[1]!;
+    expect(second.before + second.accent + second.after).toBe('Then inside the Antigravity CLI open the plugin and choose Sign in');
+    expect(anti.pray).toEqual(['Use indulgence to pray for my immortal soul']);
+    expect(anti.alternative!.setup[0]!.lines).toEqual(['agy mcp add indulgence https://gate.test/mcp']);
   });
 
   it('installs the OpenCode plugin from this repo and prays with its command, with plain MCP as the other way', () => {
@@ -60,7 +59,7 @@ describe('the welcome', () => {
   it("gives every agent another way in, through this gate's MCP endpoint and a prayer in words", () => {
     for (const a of list) {
       const other = a.alternative!;
-      expect(other.summary).toMatch(/^Or connect without the (plugin|extension)$/);
+      expect(other.summary).toBe('Or connect without the plugin');
       expect(other.setup[0]!.lines[0]).toContain('https://gate.test/mcp');
       expect(other.pray.join(' ')).toContain('pray for my immortal soul');
       expect(other.pray.join(' ')).not.toContain('/indulgence');
@@ -75,7 +74,7 @@ describe('the welcome', () => {
   });
 
   it('gives each agent its own colour, and names it in the words that take that colour', () => {
-    expect(Object.fromEntries(list.map((a) => [a.id, a.colour]))).toEqual({ claude: '#d97757', codex: '#ffffff', opencode: '#ffffff', gemini: '#4285f4' });
+    expect(Object.fromEntries(list.map((a) => [a.id, a.colour]))).toEqual({ antigravity: '#3186ff', claude: '#d97757', codex: '#ffffff', opencode: '#ffffff' });
     for (const a of list) expect(a.setup[0]!.accent).toContain(a.name);
   });
 

@@ -71,7 +71,7 @@ The service keeps the least data it needs to seat priests and burn candles. Pray
 
 **Never collected:** your code, files or repositories; anything in your conversation outside /indulgence; your email; your GitHub access token, which is revoked once your mutuals are worked out.
 
-**Who sees what.** Strangers see an anonymous priest saying canned (pre-generated) prayers, plus the names on candles. Your mutuals see your name when they hover over your priest, and read the prayers your model writes, unless you opted out with `--private`; then they see pre-generated prayers too. You see everything about your own priest.
+**Who sees what.** Anyone who opens the site, signed in or not, sees anonymous priests saying canned (pre-generated) prayers, plus the names on candles. Your mutuals see your name when they hover over your priest, and read the prayers your model writes, unless you opted out with `--private`; then they see pre-generated prayers too. You see everything about your own priest.
 
 Mutuals come from your public follow lists, using the first 5,000 accounts you follow and the first 5,000 that follow you. They are refreshed when you sign in again, at most every 30 days.
 
@@ -81,5 +81,5 @@ Mutuals come from your public follow lists, using the first 5,000 accounts you f
 - **Real cost.** Every prayer spends tokens your provider bills you for. The budget counts prayer text only; actual usage is roughly 2 to 5 times higher, and more in long sessions.
 - **Generated text.** Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.
 - **Sharing.** By default your mutuals can read your prayers. The model that writes them may be able to see your session. Obvious leaks are filtered (see the README for what the filter can and can't stop), but none can be ruled out. To opt out, use `/indulgence --private`: everyone else then sees only pre-generated prayer text, never yours.
-- **Independent project.** Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).
+- **Independent project.** Not affiliated with GitHub, Anthropic, Clockwork Labs (SpacetimeDB), OpenAI, Google or OpenCode. Their names and marks belong to their owners and appear here only to say which tool is meant.
 - **Deletion.** `/indulgence delete-account` deletes your account, follow edges and sessions, once you confirm it in your browser. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings at any time.

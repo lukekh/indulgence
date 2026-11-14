@@ -1,6 +1,7 @@
-// "Repudiationes · Merita" in the bottom left: each opens a panel over the cathedral with the
-// disclaimers or the credits, in Latin first, with English a click away. The text is static
-// and lives in index.html; nothing from the database is ever put into the DOM.
+// "Apologia · Repudiationes · Merita" in the bottom left: each opens a panel over the cathedral
+// with the artist's statement, the disclaimers or the credits, in Latin first, with English a
+// click away. The text is static and lives in index.html; nothing from the database is ever
+// put into the DOM.
 
 type Lang = 'la' | 'en';
 
