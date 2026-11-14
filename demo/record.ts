@@ -379,7 +379,7 @@ async function main() {
     })();
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
-    const logPath = `~/.claude/indulgence/prayers/${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}-${begun.session_id.slice(0, 8)}.md`;
+    const logPath = `~/.indulgence/prayers/${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}-${begun.session_id.slice(0, 8)}.md`;
     await sleep(700);
     await page.evaluate((s) => (window as any).stage.showSubagent(s), begun.session_id);
     await sleep(700);

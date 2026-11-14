@@ -1,0 +1,10 @@
+{
+  "indulgence-prayer-log": {
+    "PostToolUse": [
+      {
+        "matcher": ".*mcp.*",
+        "hooks": [{ "type": "command", "command": "node scripts/prayer-log.mjs antigravity", "timeout": 10 }]
+      }
+    ]
+  }
+}

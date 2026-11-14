@@ -35,7 +35,9 @@ test('keeps a record of accepted prayers on this machine, and nothing else', asy
   assert.equal(record('indulgence_pray', { session_id: 'sess1234XYZ', text: 'Refused prayer.', tier: 'in_session' }, '{"done":false,"accepted":false,"left":900}', { dir, now }), undefined);
   assert.equal(record('bash', { command: 'ls' }, 'files', { dir, now }), undefined);
   const text = fs.readFileSync(begun, 'utf8');
-  assert.equal(text, '# Indulgence\n\nIntention: for my cat\nBegun: ' + now.toISOString() + '\n\nKyrie eleison,\nChriste eleison.\nAmen.\n\n');
+  assert.equal(text, '# /indulgence\n\nIntention: for my cat\nBegun: ' + now.toISOString() + '\n\n## 09:05:00\n\nKyrie eleison,\nChriste eleison.\nAmen.\n');
+  // The same record, in the same place, as every other /indulgence plugin keeps.
+  assert.equal(fs.readFileSync(path.join(import.meta.dirname, '../plugin/scripts/prayer-log.mjs'), 'utf8'), fs.readFileSync(path.join(import.meta.dirname, 'prayer-log.mjs'), 'utf8'), 'run npm run sync:prayer-log');
   assert.ok(!text.includes('secret'), 'the single-use link is not kept');
   // The hook itself never throws, whatever it is handed.
   const hooks = await IndulgencePlugin({}, undefined);

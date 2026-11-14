@@ -383,7 +383,7 @@ async function main() {
     await sleep(900);
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
-    await stage('finish', `~/.claude/indulgence/prayers/${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}-${begun.session_id.slice(0, 8)}.md`);
+    await stage('finish', `~/.indulgence/prayers/${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}-${begun.session_id.slice(0, 8)}.md`);
     await sleep(4500);
     const frames = await rec.stop();
     await Promise.race([praying, sleep(1000)]);

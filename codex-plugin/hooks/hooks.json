@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^mcp__.*indulgence.*__begin$",
+        "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/prayer-log.mjs\" begin", "timeout": 10 }]
+      },
+      {
+        "matcher": "^mcp__.*indulgence.*__pray$",
+        "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/prayer-log.mjs\" pray", "timeout": 10 }]
+      }
+    ]
+  }
+}
