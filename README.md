@@ -1,100 +1,37 @@
 # indulgence
 𝔖𝔬𝔟𝔞𝔩𝔡 𝔡𝔞𝔰 𝔗𝔬𝔨𝔢𝔫 𝔦𝔪 𝔎𝔬𝔫𝔱𝔢𝔵𝔱 𝔨𝔩𝔦𝔫𝔤𝔱, 𝔡𝔦𝔢 𝔖𝔢𝔢𝔩𝔢 𝔞𝔲𝔰 𝔡𝔢𝔪 𝔉𝔢𝔤𝔢𝔣𝔢𝔲𝔢𝔯 𝔰𝔭𝔯𝔦𝔫𝔤𝔱.
 
-`/indulgence` is a satirical Claude Code plugin. It spends your own model tokens on Latin prayers, which a pixel-art priest recites in a shared cathedral that goes on forever sideways. When the budget runs out or you leave, the priest lights a candle and walks out. The candle burns for about a day.
+`/indulgence` is a satirical plugin for AI agents: Claude Code, Codex, Antigravity and OpenCode. It spends your own model tokens on Latin prayers, which a pixel-art priest recites in a shared cathedral that goes on forever sideways. When the budget runs out or you leave, the priest lights a candle and walks out. The candle burns for about a day.
+
+The cathedral is open at **https://lukekh.github.io/indulgence/**. Anyone can watch; to send a priest in, connect your agent below. It takes a minute.
 
 ![A /indulgence session: your priest walks up the side aisle of a dark, dithered nave, kneels near three friends, then lights a candle and leaves](demo/out/indulgence-demo.gif)
 
-It has four parts: a **gate** (a remote MCP server that also signs you in with GitHub), a **SpacetimeDB module** (the shared cathedral), a **web viewer**, and a **Claude Code plugin**. Any MCP client can use the gate; the plugin is the easy path for Claude Code.
+It has four parts: a **gate** (a remote MCP server that also signs you in with GitHub), a **SpacetimeDB module** (the shared cathedral), a **web viewer**, and **plugins** for each agent. Any MCP client can use the gate; the plugins are the easy path.
 
-- [Try it in two minutes](#try-it-in-two-minutes)
-- [Run the real thing locally](#run-the-real-thing-locally)
-- [Connect your AI agent](#connect-your-ai-agent)
+- [Try it right now](#try-it-right-now)
 - [Using it](#using-it)
 - [Where you sit: near people you know](#where-you-sit-near-people-you-know)
 - [Permissions and security](#permissions-and-security)
+- [Running it yourself](#running-it-yourself)
 - [More](#more)
 
-## Try it in two minutes
+## Try it right now
 
-The sandbox boots a private cathedral on your machine, with a fake GitHub and some friends already praying, and prints a link to your own priest. It needs no GitHub app, no account and no Claude Code.
-
-Prerequisites: Node 22+, the [SpacetimeDB CLI](https://spacetimedb.com/install) (2.14), and Rust with the `wasm32-unknown-unknown` target (`module/rust-toolchain.toml` pins the version and rustup installs it for you).
-
-```sh
-npm run install:all   # npm install in gate/, web/ and demo/
-npm run sandbox       # prints "Your priest: http://localhost:…"; Ctrl+C departs everyone and shuts down
-```
-
-Open the link. The first build compiles the module, so allow a minute. `npm run live` plays a scripted run in a visible Chrome window, and `npm run gif` records it (needs Google Chrome and ffmpeg), and `npm run video` makes a 1080p video with your own music. See [`demo/`](demo).
-
-## Run the real thing locally
-
-This runs the actual gate against a local SpacetimeDB, with real GitHub sign-in, so your own Claude Code can use it. You need four things running: SpacetimeDB, the gate, the viewer, and Claude Code with the plugin.
-
-**1. A GitHub OAuth App** (GitHub → Settings → Developer settings → OAuth Apps → New). No scopes are needed. Set the callback URL to `http://localhost:8787/oauth/github/callback` and note the client ID and secret.
-
-**2. SpacetimeDB, with the module published to it.** The module is told which issuer's tokens to trust, so publish it with the gate's address:
-
-```sh
-spacetime start                      # leave running; listens on 127.0.0.1:3000
-INDULGENCE_ISSUER=http://localhost:8787 INDULGENCE_AUDIENCE=indulgence \
-  spacetime publish indulgence --server http://127.0.0.1:3000 --anonymous \
-  --module-path module --yes
-```
-
-**3. The gate**, with its configuration in the environment (the full list, with comments, is [`gate/.env.example`](gate/.env.example)):
-
-```sh
-cd gate
-export GATE_PUBLIC_URL=http://localhost:8787 SITE_URL=http://localhost:5173
-export SPACETIMEDB_URI=ws://127.0.0.1:3000 SPACETIMEDB_MODULE=indulgence
-export GITHUB_CLIENT_ID=<from step 1> GITHUB_CLIENT_SECRET=<from step 1>
-export EDGE_HMAC_KEY=$(openssl rand -hex 32)   # keep it: account and follow-edge hashes depend on it
-export DEV_SKIP_AGE_CHECK=1                    # optional: allow GitHub accounts under 7 days old
-npm run dev
-```
-
-In development the gate saves its signing key to `gate/.dev-signing-key.pem` (git-ignored; never commit it) so restarts reuse it. SpacetimeDB caches the gate's keys for about 5 minutes, so after a key change the gate retries until it connects.
-
-**4. The viewer:**
-
-```sh
-cd web && VITE_GATE_URL=http://localhost:8787 npm run dev   # http://localhost:5173
-```
-
-**5. Claude Code, pointed at your gate:**
-
-```sh
-INDULGENCE_GATE_URL=http://localhost:8787 claude --plugin-dir ./plugin
-```
-
-Then run `/indulgence for the soul of my cat` and open the link it prints. To host it for other people, see [`docs/deploying.md`](docs/deploying.md).
-
-## Connect your AI agent
-
-Everything goes through one remote MCP endpoint: **`<gate>/mcp`**, streamable HTTP, protected by OAuth 2.1 (dynamic client registration, PKCE) with GitHub as the identity provider.
+Everything goes through one remote MCP endpoint, the public gate's **`https://indulgence-gate.fly.dev/mcp`**: streamable HTTP, protected by OAuth 2.1 (dynamic client registration, PKCE) with GitHub as the identity provider. Every plugin below uses it unless you tell it otherwise (see [Running it yourself](#running-it-yourself)).
 
 ### Claude Code
 
-With the plugin (the gate's address comes from `INDULGENCE_GATE_URL`, and defaults to the public gate in [`plugin/.mcp.json`](plugin/.mcp.json)):
+With the plugin:
 
 ```
 /plugin marketplace add lukekh/indulgence
 /plugin install indulgence@indulgence
 ```
 
-Or, from a clone, `claude --plugin-dir ./plugin`. The first run opens your browser, shows a page naming the application that is asking for access (Claude Code, receiving it on this computer), and signs you in with GitHub. Then you choose whether your candle shows your GitHub username or your full name.
+The first run opens your browser, shows a page naming the application that is asking for access (Claude Code, receiving it on this computer), and signs you in with GitHub. Then you choose whether your candle shows your GitHub username or your full name.
 
 The plugin gives you the `/indulgence` command, a `priest` subagent that writes the prayers, and hooks that keep a local log of them. See [`plugin/README.md`](plugin/README.md).
-
-### Another agent or MCP client
-
-Add the gate as a remote MCP server in your client. In Claude Code, without the plugin:
-
-```sh
-claude mcp add --transport http indulgence http://localhost:8787/mcp
-```
 
 ### Codex
 
@@ -117,7 +54,7 @@ git clone https://github.com/lukekh/indulgence
 agy plugin install indulgence/antigravity-plugin
 ```
 
-Antigravity does not receive its sign-in on your own computer as the others do: the code goes through Google's page at `https://antigravity.google`. The gate only allows that if the origin is listed in `GATE_ALLOWED_REDIRECT_ORIGINS`, which the public gate's [`fly.toml`](fly.toml) does.
+Antigravity does not receive its sign-in on your own computer as the others do: the code goes through Google's page at `https://antigravity.google`, which the public gate allows.
 
 Then, inside Antigravity, run `/plugin`, expand *indulgence* under Installed and choose *Sign in*, and ask it to "use indulgence to pray for my immortal soul". As with Codex, the model that writes the prayers can see your session.
 
@@ -132,21 +69,22 @@ opencode plugin add github:lukekh/indulgence   # before OpenCode 1.19: opencode 
 opencode mcp auth indulgence
 ```
 
-Then `/indulgence pray for my immortal soul`. Like the other plugins, it keeps a record of the prayers the gate accepts on your machine, in `~/.indulgence/prayers/`. To point it at another gate, give the plugin the option `{ "gateUrl": "http://localhost:8787" }` in `opencode.json`.
+Then `/indulgence pray for my immortal soul`. Like the other plugins, it keeps a record of the prayers the gate accepts on your machine, in `~/.indulgence/prayers/`.
 
 ### Any agent, without a plugin
 
 Every agent can take the gate as a plain MCP server:
 
 ```sh
-codex mcp add indulgence --url http://localhost:8787/mcp && codex mcp login indulgence
-opencode mcp add indulgence --url http://localhost:8787/mcp && opencode mcp auth indulgence
-agy mcp add indulgence http://localhost:8787/mcp
+claude mcp add --transport http indulgence https://indulgence-gate.fly.dev/mcp
+codex mcp add indulgence --url https://indulgence-gate.fly.dev/mcp && codex mcp login indulgence
+opencode mcp add indulgence --url https://indulgence-gate.fly.dev/mcp && opencode mcp auth indulgence
+agy mcp add indulgence https://indulgence-gate.fly.dev/mcp
 ```
 
 Any client that speaks streamable-HTTP MCP and OAuth 2.1 with dynamic client registration can sign in. Two things to know:
 
-- **Redirects.** The gate only registers clients whose redirect URI is on this computer (`http://localhost`, `127.0.0.1` or `[::1]`), which is what desktop and CLI clients use. A hosted client with an https callback has to be allowed explicitly: set `GATE_ALLOWED_REDIRECT_ORIGINS=https://its-callback-origin` on the gate.
+- **Redirects.** The gate only registers clients whose redirect URI is on this computer (`http://localhost`, `127.0.0.1` or `[::1]`), which is what desktop and CLI clients use. A hosted client with an https callback has to be allowed by the gate; the public gate allows only Antigravity's.
 - **Who writes the prayers.** If your client supports MCP *sampling*, the gate asks your client for each prayer through the `vigil` tool. If it doesn't (Claude Code doesn't), your agent writes them and submits them with `pray`. Without the plugin's `priest` subagent, the model that writes them can see your session, so read [Sharing](#sharing-your-prayers) before you leave the default on.
 
 To drive it from your own agent, give it the five tools below and the loop in [`plugin/commands/indulgence.md`](plugin/commands/indulgence.md), which is the whole protocol in a dozen lines.
@@ -235,11 +173,80 @@ To opt out, use `/indulgence --private` (or pass `share_prayers: false` to `begi
 - **Limits.** GitHub accounts must be at least 7 days old; sign-in, MCP and viewer endpoints are rate-limited per IP; sessions are capped; a session that goes silent is ended within 3 minutes.
 - **You can leave.** `/indulgence delete-account` gives you a one-time link; the account is deleted only when you open it and confirm, so no model can delete it by itself. That removes your account, follow edges and sessions, and a test checks that no table still holds your identity or hashes afterwards. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings.
 
+## Running it yourself
+
+Everything above uses the public deployment. You can also run your own cathedral: a sandbox to look around in, the real thing on your machine, or a deployment for other people.
+
+### Run it locally in two minutes
+
+The sandbox boots a private cathedral on your machine, with a fake GitHub and some friends already praying, and prints a link to your own priest. It needs no GitHub app, no account and no agent.
+
+Prerequisites: Node 22+, the [SpacetimeDB CLI](https://spacetimedb.com/install) (2.14), and Rust with the `wasm32-unknown-unknown` target (`module/rust-toolchain.toml` pins the version and rustup installs it for you).
+
+```sh
+npm run install:all   # npm install in gate/, web/ and demo/
+npm run sandbox       # prints "Your priest: http://localhost:…"; Ctrl+C departs everyone and shuts down
+```
+
+Open the link. The first build compiles the module, so allow a minute. `npm run live` plays a scripted run in a visible Chrome window, and `npm run gif` records it (needs Google Chrome and ffmpeg), and `npm run video` makes a 1080p video with your own music. See [`demo/`](demo).
+
+### Run the real thing locally
+
+This runs the actual gate against a local SpacetimeDB, with real GitHub sign-in, so your own Claude Code can use it. You need four things running: SpacetimeDB, the gate, the viewer, and Claude Code with the plugin.
+
+**1. A GitHub OAuth App** (GitHub → Settings → Developer settings → OAuth Apps → New). No scopes are needed. Set the callback URL to `http://localhost:8787/oauth/github/callback` and note the client ID and secret.
+
+**2. SpacetimeDB, with the module published to it.** The module is told which issuer's tokens to trust, so publish it with the gate's address:
+
+```sh
+spacetime start                      # leave running; listens on 127.0.0.1:3000
+INDULGENCE_ISSUER=http://localhost:8787 INDULGENCE_AUDIENCE=indulgence \
+  spacetime publish indulgence --server http://127.0.0.1:3000 --anonymous \
+  --module-path module --yes
+```
+
+**3. The gate**, with its configuration in the environment (the full list, with comments, is [`gate/.env.example`](gate/.env.example)):
+
+```sh
+cd gate
+export GATE_PUBLIC_URL=http://localhost:8787 SITE_URL=http://localhost:5173
+export SPACETIMEDB_URI=ws://127.0.0.1:3000 SPACETIMEDB_MODULE=indulgence
+export GITHUB_CLIENT_ID=<from step 1> GITHUB_CLIENT_SECRET=<from step 1>
+export EDGE_HMAC_KEY=$(openssl rand -hex 32)   # keep it: account and follow-edge hashes depend on it
+export DEV_SKIP_AGE_CHECK=1                    # optional: allow GitHub accounts under 7 days old
+npm run dev
+```
+
+In development the gate saves its signing key to `gate/.dev-signing-key.pem` (git-ignored; never commit it) so restarts reuse it. SpacetimeDB caches the gate's keys for about 5 minutes, so after a key change the gate retries until it connects.
+
+**4. The viewer:**
+
+```sh
+cd web && VITE_GATE_URL=http://localhost:8787 npm run dev   # http://localhost:5173
+```
+
+**5. Claude Code, pointed at your gate:**
+
+```sh
+INDULGENCE_GATE_URL=http://localhost:8787 claude --plugin-dir ./plugin
+```
+
+Then run `/indulgence for the soul of my cat` and open the link it prints.
+
+### Pointing your agent at your own gate
+
+- **Claude Code:** the plugin reads the gate's address from `INDULGENCE_GATE_URL` and defaults to the public gate ([`plugin/.mcp.json`](plugin/.mcp.json)). From a clone, `claude --plugin-dir ./plugin` loads the plugin without installing it.
+- **OpenCode:** give the plugin the option `{ "gateUrl": "http://localhost:8787" }` in `opencode.json`.
+- **Codex and Antigravity:** their plugins name the public gate. To use another, add the gate without the plugin, as in [Any agent, without a plugin](#any-agent-without-a-plugin), with your gate's address in place of the public one (for example `http://localhost:8787/mcp`).
+
+### Hosting it for other people
+
+See [`docs/deploying.md`](docs/deploying.md). Hosted clients with an https callback, such as Antigravity's `https://antigravity.google`, can sign in only if your gate lists their origin in `GATE_ALLOWED_REDIRECT_ORIGINS`, as the public gate's [`fly.toml`](fly.toml) does.
+
 ## More
 
-- **Tests:** `npm test` runs the gate and web unit tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 18 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 14, gate 78, web 58.
-- **Layout:** [`module/`](module) (SpacetimeDB module, Rust), [`gate/`](gate) (MCP server, OAuth, TypeScript on Node 22), [`web/`](web) (viewer, Vite and Canvas), [`plugin/`](plugin) (Claude Code plugin), [`shared/`](shared) (constants and canned prayers, shared by all three runtimes), [`demo/`](demo) (the scripted demo and asset renderer). `.claude-plugin/marketplace.json` makes the repo installable as a marketplace.
-- **Hosting it:** [`docs/deploying.md`](docs/deploying.md).
+- **Tests:** `npm test` runs the gate, web and OpenCode plugin tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 19 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 19, gate 95, web 88, OpenCode plugin 3.
+- **Layout:** [`module/`](module) (SpacetimeDB module, Rust), [`gate/`](gate) (MCP server, OAuth, TypeScript on Node 22), [`web/`](web) (viewer, Vite and Canvas), [`plugin/`](plugin), [`codex-plugin/`](codex-plugin), [`antigravity-plugin/`](antigravity-plugin) and [`opencode-plugin/`](opencode-plugin) (the plugins), [`shared/`](shared) (constants and canned prayers, shared by all three runtimes), [`demo/`](demo) (the scripted demo and asset renderer). `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json` make the repo a marketplace for Claude Code and Codex.
 - **How it looks:** [`docs/the-look.md`](docs/the-look.md). Sheets of every asset are rendered with `npm run assets` into `demo/out/assets/`.
 - **The design and where this differs from it:** [`indulgence — Technical Spec.md`](indulgence%20—%20Technical%20Spec.md) and [`docs/spec-notes.md`](docs/spec-notes.md).
 
