@@ -44,8 +44,11 @@ export function setUpMusic(doc: Document = document) {
   wrap.hidden = false;
 
   let track = 0;
-  const audio = new Audio(asset(TRACKS[track]!));
-  audio.preload = 'auto';
+  const audio = new Audio();
+  // Fetch a chant only once it is to be heard: most browsers hold the music back until the
+  // first touch, and a visitor who never gives one should not download five megabytes.
+  audio.preload = 'none';
+  audio.src = asset(TRACKS[track]!);
   audio.volume = 0;
   // Every visit begins with music; "Silentium" silences this visit only. (The choice used to
   // be remembered, which left the page silent for good after one click.)
