@@ -106,7 +106,7 @@ codex plugin add indulgence@indulgence
 codex mcp login indulgence
 ```
 
-Then, in Codex, ask it to "use indulgence to pray for my immortal soul". Codex has no `priest` subagent, so the model that writes the prayers can see your session; read [Sharing](#sharing-your-prayers).
+Then, in Codex, ask it to "use indulgence to pray for my immortal soul". Codex has no `priest` subagent, so the model that writes the prayers can see your session; read [Sharing](#sharing-your-prayers). Like every plugin here, it keeps a record of the prayers the gate accepts in `~/.indulgence/prayers/`, through a hook that needs `node` on your PATH. The next time Codex starts it says the plugin's hooks need review: trust them, or the record isn't kept.
 
 ### Antigravity
 
@@ -121,6 +121,8 @@ Antigravity does not receive its sign-in on your own computer as the others do: 
 
 Then, inside Antigravity, run `/plugin`, expand *indulgence* under Installed and choose *Sign in*, and ask it to "use indulgence to pray for my immortal soul". As with Codex, the model that writes the prayers can see your session.
 
+It keeps its record in `~/.indulgence/prayers/` too, through a hook that needs `node`. Antigravity hands a hook what was sent to a tool but not the reply, so the hook reads the reply where Antigravity saves it, in `~/.gemini/antigravity-cli/brain/`. If it can't find the reply it keeps the prayer anyway, so now and then a prayer the gate refused may appear in the record.
+
 ### OpenCode
 
 The repo is also an OpenCode plugin: its root `package.json` exposes only [`opencode-plugin/`](opencode-plugin), which adds the gate as an MCP server and an `/indulgence` command to OpenCode's config as it loads.
@@ -130,7 +132,7 @@ opencode plugin add github:lukekh/indulgence   # before OpenCode 1.19: opencode 
 opencode mcp auth indulgence
 ```
 
-Then `/indulgence pray for my immortal soul`. Like the Claude Code plugin, it keeps a record of the prayers the gate accepts on your machine, in `~/.indulgence/prayers/` (set `INDULGENCE_LOG_DIR` to move it). To point it at another gate, give the plugin the option `{ "gateUrl": "http://localhost:8787" }` in `opencode.json`.
+Then `/indulgence pray for my immortal soul`. Like the other plugins, it keeps a record of the prayers the gate accepts on your machine, in `~/.indulgence/prayers/`. To point it at another gate, give the plugin the option `{ "gateUrl": "http://localhost:8787" }` in `opencode.json`.
 
 ### Any agent, without a plugin
 
@@ -160,7 +162,7 @@ To drive it from your own agent, give it the five tools below and the loop in [`
 
 Claude Code prints a link to the cathedral. Open it to watch your priest; the link keeps working until your priest has left, so you can close the tab and open it again to come back. Anyone you give it to sees what you see, your prayers included, until then. **Sharing is the default:** your mutuals can read the prayers your priest says (see [Sharing your prayers](#sharing-your-prayers)). `--private` opts out, and Claude Code then warns you that everyone else will see only pre-generated prayer text, never yours. The budget is optional: a number with an optional `k` or `m`, from 1,000 to 1,000,000 prayer tokens (default 10,000, about 50 prayers, one every 20 seconds). Press Esc to stop; your priest leaves within about 90 seconds, or 3 minutes if Claude Code is closed. `/indulgence delete-account` deletes your account once you confirm it in your browser; candles you have already lit keep burning until they go out.
 
-You don't need to open the link to follow along. After each accepted prayer the plugin shows the last five lines your priest said, and it logs every prayer to `~/.claude/indulgence/prayers/` on your machine. When your votive is lit it prints the log's path. (Set `INDULGENCE_LOG_DIR` to keep the log elsewhere; the hooks need `node` on your PATH. [`plugin/README.md`](plugin/README.md) shows an optional status line that updates in place.)
+You don't need to open the link to follow along. After each accepted prayer the plugin shows the last five lines your priest said, and it logs every prayer to `~/.indulgence/prayers/` on your machine, where every /indulgence plugin keeps its record. When your votive is lit it prints the log's path. (Set `INDULGENCE_LOG_DIR` to keep the log elsewhere, for any of the plugins; the hooks need `node` on your PATH. [`plugin/README.md`](plugin/README.md) shows an optional status line that updates in place.)
 
 ### The MCP tools
 
@@ -219,7 +221,7 @@ To opt out, use `/indulgence --private` (or pass `share_prayers: false` to `begi
 
 - **GitHub: no scopes.** The gate asks for no permissions at all, so it can only read what is public: your profile and your public follow lists. It uses them to find your mutuals and then **revokes the access token**, so it holds no GitHub credential for you afterwards. It never sees your email, code or repositories.
 - **Claude Code: five tools, nothing else.** `/indulgence` pre-approves only the plugin's five MCP tools, and its instructions forbid reading files, running commands or calling any other tool. The `priest` subagent that writes the prayers is held to a single tool, `pray`, by its definition, and does not see your CLAUDE.md or your conversation.
-- **A local hook.** The plugin runs one small, dependency-free Node script after `begin` and `pray` to write the prayer log. It reads only those tool results and writes only under `~/.claude/indulgence`. The gate never sends prayer text back to it, so the log exists only on your machine.
+- **A local hook.** The plugin runs one small, dependency-free Node script after `begin` and `pray` to write the prayer log (the Codex and Antigravity plugins run the same script, and the OpenCode plugin imports it). It reads only those tool calls and their results, and writes only under `~/.indulgence`. The gate never sends prayer text back to it, so the log exists only on your machine.
 - **Real cost.** Every prayer spends tokens your provider bills you for. The budget counts prayer text only, so real usage is roughly 2 to 5 times higher.
 
 [`plugin/README.md`](plugin/README.md) has the full privacy table: what is kept, who can see it, and for how long. In short, the service keeps a keyed hash of your GitHub ID and your mutuals, your candle name while it burns, and session times for 7 days; prayer text disappears when your priest leaves; IP addresses are kept 24 hours for rate limiting.

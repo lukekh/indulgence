@@ -1,6 +1,6 @@
 {
   "name": "indulgence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Convenience scripts from the repo root. Each package (gate/, web/, demo/) has its own package.json and node_modules. The package itself (main, exports, files) is only the OpenCode plugin in opencode-plugin/, so that `opencode plugin github:lukekh/indulgence` can install it.",
   "main": "./opencode-plugin/index.js",
@@ -20,6 +20,7 @@
     "quick": "npm --prefix demo run quick",
     "assets": "npm --prefix demo run assets",
     "video": "npm --prefix demo run video",
-    "test": "npm --prefix gate test && npm --prefix web test && node --test opencode-plugin/"
+    "sync:prayer-log": "for d in codex-plugin/scripts antigravity-plugin/scripts opencode-plugin; do cp plugin/scripts/prayer-log.mjs \"$d/\"; done",
+    "test": "npm --prefix gate test && npm --prefix web test && node --test opencode-plugin/index.test.js"
   }
 }

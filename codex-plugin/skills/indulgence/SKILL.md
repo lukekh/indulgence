@@ -55,7 +55,8 @@ Never call `delete_account` for any other reason, and never to stop praying or e
 6. If `mode` is `pray`, compose one prayer and call `pray` with the `session_id`, the prayer as
    `text`, and `tier: "in_session"`. Wait for the result, then compose the next. Repeat until a
    result has `done: true`. Each call waits its turn, about twenty seconds, so do not hurry.
-7. When finished, reply "Your votive is lit. Deo gratias." and nothing else.
+7. When finished, reply "Your votive is lit. Deo gratias." If you were told where the prayers of
+   this session are being written, add a second line: "Prayers: <that path>". Nothing else.
 
 ## Writing a prayer
 

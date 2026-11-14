@@ -8,16 +8,15 @@
 //
 // It also keeps a record of what your priest said, on your machine: the gate never returns
 // prayer text, so each prayer it accepts is appended, a clause to a line, to a file in
-// ~/.indulgence/prayers/ (or under INDULGENCE_LOG_DIR). Nothing is sent anywhere.
+// ~/.indulgence/prayers/ (or under INDULGENCE_LOG_DIR), where every /indulgence plugin keeps
+// its record. Nothing is sent anywhere.
 //
 //   opencode plugin add github:lukekh/indulgence     (before OpenCode 1.19: without "add")
 //   opencode mcp auth indulgence
 //
 // Options (in the "plugin" entry of opencode.json): { "gateUrl": "http://localhost:8787" }.
 
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { begun, clauses, logDir, prayed, structured } from './prayer-log.mjs';
 
 export const GATE_URL = 'https://indulgence-gate.fly.dev';
 
@@ -64,52 +63,17 @@ export function configure(config, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// The local record of prayers
+// The local record of prayers, kept by the same script as the other plugins' (prayer-log.mjs)
 // ---------------------------------------------------------------------------
 
-/** Where the record is kept. */
-export function logDir(env = process.env) {
-  return env.INDULGENCE_LOG_DIR || path.join(os.homedir(), '.indulgence');
-}
-
-/** A prayer as lines: whitespace collapsed, broken after every comma and full stop. */
-export function clauses(text) {
-  const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
-  return (flat.match(/[^.,]*[.,]+|[^.,]+$/g) ?? []).map((s) => s.trim()).filter((s) => /[^.,\s]/.test(s));
-}
+export { clauses, logDir };
 
 /** The structured result in a tool's text output: its last line that is a JSON object. */
-export function resultOf(output) {
-  for (const line of String(output ?? '').split('\n').reverse()) {
-    try {
-      const v = JSON.parse(line);
-      if (v && typeof v === 'object' && !Array.isArray(v)) return v;
-    } catch {
-      // not the JSON line
-    }
-  }
-  return {};
-}
+export const resultOf = (output) => structured(output);
 
 /** Which of the gate's tools a tool name is, however OpenCode prefixes it ("indulgence_pray"). */
 export function gateTool(name) {
-  return /(?:^|[_.:-])indulgence[_.:-](begin|pray)$/.exec(String(name ?? ''))?.[1];
-}
-
-const pad = (n) => String(n).padStart(2, '0');
-const stamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
-const safe = (id) => String(id ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 8) || 'session';
-
-/** The file each session's prayers go to, by the gate's session id. */
-const files = new Map();
-
-function fileFor(sessionId, dir, now) {
-  let file = files.get(sessionId);
-  if (!file) {
-    file = path.join(dir, 'prayers', `${stamp(now)}-${safe(sessionId)}.md`);
-    files.set(sessionId, file);
-  }
-  return file;
+  return /(?:^|[_.:-])indulgence[_.:-]+(begin|pray)$/.exec(String(name ?? ''))?.[1];
 }
 
 /**
@@ -120,22 +84,10 @@ export function record(tool, args, output, { dir = logDir(), now = new Date() } 
   try {
     const which = gateTool(tool);
     if (!which) return undefined;
-    const result = resultOf(output);
-    if (which === 'begin') {
-      if (typeof result.session_id !== 'string') return undefined;
-      const file = fileFor(result.session_id, dir, now);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      const intention = String(args?.intention ?? '').replace(/\s+/g, ' ').trim();
-      fs.writeFileSync(file, `# Indulgence\n\n${intention ? `Intention: ${intention}\n` : ''}Begun: ${now.toISOString()}\n\n`);
-      return file;
-    }
-    if (result.accepted !== true || typeof args?.session_id !== 'string') return undefined;
-    const lines = clauses(args.text);
-    if (lines.length === 0) return undefined;
-    const file = fileFor(args.session_id, dir, now);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, `${lines.join('\n')}\n\n`);
-    return file;
+    const result = structured(output);
+    if (which === 'begin') return begun({ sessionId: result.session_id, intention: args?.intention, budget: result.budget_tokens }, { dir, now });
+    if (result.accepted !== true) return undefined;
+    return prayed({ sessionId: args?.session_id, text: args?.text }, { dir, now })?.file;
   } catch {
     return undefined; // the record is a courtesy: a prayer never fails for want of it
   }

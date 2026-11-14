@@ -34,10 +34,10 @@ You don't need to open the link to follow along. As each prayer is accepted, the
 
 ```
 ⏺ Your votive is lit. Deo gratias.
-  Prayers: ~/.claude/indulgence/prayers/2026-11-09-1010-1a2b3c4d.md
+  Prayers: ~/.indulgence/prayers/2026-11-09-1010-1a2b3c4d.md
 ```
 
-This is done by the plugin's hooks (`hooks/hooks.json`, `scripts/prayer-log.mjs`), which need `node` on your PATH. The gate never sends prayer text back, so the record exists only on your machine. Set `INDULGENCE_LOG_DIR` to keep it somewhere other than `~/.claude/indulgence`.
+This is done by the plugin's hooks (`hooks/hooks.json`, `scripts/prayer-log.mjs`), which need `node` on your PATH. The gate never sends prayer text back, so the record exists only on your machine. The Codex, Antigravity and OpenCode plugins keep theirs in the same folder, with the same script. Set `INDULGENCE_LOG_DIR` to keep it somewhere other than `~/.indulgence`.
 
 **An always-visible view (optional).** Claude Code doesn't let a plugin redraw lines in place, so the five lines appear as a new note after each prayer. For a view that updates in place, add a status line to `~/.claude/settings.json`. It shows the five lines while your priest is praying and nothing otherwise:
 
@@ -45,7 +45,7 @@ This is done by the plugin's hooks (`hooks/hooks.json`, `scripts/prayer-log.mjs`
 {
   "statusLine": {
     "type": "command",
-    "command": "find ~/.claude/indulgence/now.txt -mmin -3 -exec cat {} \\; 2>/dev/null",
+    "command": "find ~/.indulgence/now.txt -mmin -3 -exec cat {} \\; 2>/dev/null",
     "refreshInterval": 1
   }
 }
@@ -65,7 +65,7 @@ The service keeps the least data it needs to seat priests and burn candles. Pray
 | Mutual follows, stored as keyed hashes | Seating you near friends | No one; the server only | Replaced at each sign-in; deleted with your account |
 | Intention text | Prompt for your prayers | Only you | End of session |
 | Prayer text | Display | You; your mutuals, unless you opted out with `--private` | Until your priest has left |
-| Your copy of your priest's prayers | Your record | Only you: it is a file on your machine, never sent anywhere | Until you delete it (`~/.claude/indulgence`) |
+| Your copy of your priest's prayers | Your record | Only you: it is a file on your machine, never sent anywhere | Until you delete it (`~/.indulgence`) |
 | Session times, budget, spend | Pacing, vestments, candle size | Your candle's size and presence show that you visited in the last day or two | 7 days after the session ends |
 | IP address | Rate limiting | No one | 24 hours, in gate logs |
 
