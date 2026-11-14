@@ -255,7 +255,7 @@ async function main() {
         cwd: path.join(ROOT, 'web'),
         log,
         // The recordings have no sound; the sandbox is the product, with its music.
-        env: { ...ENV, VITE_GATE_URL: `http://localhost:${gatePort}`, VITE_DEMO_THURIFER_SHIFT_MS: String(Math.round(shift)), ...(MODE === 'sandbox' ? {} : { VITE_MUSIC: 'off' }) },
+        env: { ...ENV, VITE_GATE_URL: `http://localhost:${gatePort}`, VITE_DEMO_THURIFER_SHIFT_MS: String(Math.round(shift)), ...(MODE === 'sandbox' ? {} : { VITE_MUSIC: 'off', VITE_CONGREGATION: 'off' }) },
       });
       start(process.execPath, [vite, 'preview', '--outDir', webOut, '--port', String(webPort), '--strictPort', '--host', '127.0.0.1'], { cwd: path.join(ROOT, 'web'), log });
       await waitFor(`http://127.0.0.1:${webPort}/`, 30_000);
@@ -431,6 +431,9 @@ async function main() {
       await viewer.locator('#notice').press('Escape');
       await notice('button[data-open="merita"]', 1800);
       await viewer.locator('#notice').press('Escape');
+      // Closing with Escape hands the focus back to the word that opened the panel, which would
+      // leave it lit in crimson for the rest of the recording.
+      await viewer.locator('body').evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await hover({ x: box.x + 40, y: box.y + 40 }, 300);
     }
 

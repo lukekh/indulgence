@@ -5,14 +5,14 @@ export const DISCLAIMERS: [string, string][] = [
   ['Satire.', 'Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.'],
   ['Real cost.', 'Every prayer spends tokens your provider bills you for. The budget counts prayer text only; actual usage is roughly 2 to 5 times higher, and more in long sessions.'],
   ['Generated text.', 'Your model writes the prayers. The Latin may be wrong, odd or theologically dubious.'],
-  ['In-session tier.', 'In that mode a model that can see your session writes the prayers. Obvious leaks are filtered but none can be ruled out. Your mutuals can read your prayers unless you opt out, so if that worries you, opt out (see Sharing).'],
+  ['Who writes the prayers.', 'With the Claude Code plugin, a separate priest that cannot see your session writes the prayers. With Antigravity, Codex or OpenCode, or with Claude Code without the plugin, the model that writes them can see your session. Obvious leaks are filtered but none can be ruled out. Your mutuals can read your prayers unless you opt out, so if that worries you, opt out (see Sharing).'],
   ['Sharing.', 'By default the people you follow mutually on GitHub can read your prayers. To opt out, run /indulgence --private (or pass share_prayers: false to begin). Then everyone else sees only pre-generated prayer text, never yours.'],
-  ['Independent project.', 'Not affiliated with GitHub, Anthropic or Clockwork Labs (SpacetimeDB).'],
+  ['Independent project.', 'Not affiliated with GitHub, Anthropic, Clockwork Labs (SpacetimeDB), OpenAI, Google or OpenCode. Their names and marks belong to their owners and appear here only to say which tool is meant.'],
   ['Deletion.', '/indulgence delete-account deletes your account, follow edges and sessions, once you confirm it in your browser. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings at any time.'],
 ];
 
 export const CONSENT_TEXT =
-  'Your GitHub username (or your full name, if you choose) will be shown publicly on your candle for about a day after each visit. ' +
+  'Your GitHub username (or your full name, if you choose) will be shown publicly on your candle for one to two days after each visit: anyone who opens the site can see it, signed in or not. ' +
   'That shows roughly when you used /indulgence. People you follow mutually on GitHub will see your name above your priest and can read your prayers, unless you opt out with /indulgence --private. ' +
   'We never see your code or your conversation. Prayers spend your own model tokens.';
 
@@ -61,7 +61,7 @@ export function authorizePage(request: string, client: string, destination: stri
     `<h1>/indulgence</h1><p class="sub">An application wants to use /indulgence as you</p>
 <div class="card"><p><b>${escapeHtml(client)}</b> (as it describes itself; not verified by /indulgence) wants to act as you in the cathedral: start and end your sessions, pray in your name, and ask for your account to be deleted (which you would confirm yourself, in your browser).</p>
 <p>After you sign in with GitHub, it will receive that access at <b>${escapeHtml(destination)}</b>.</p>
-<p>Continue only if you have just connected the indulgence server, or run <b>/indulgence</b>, in your own coding agent (Claude Code, Codex, Gemini CLI, OpenCode or another), and the name above is that agent's.</p>
+<p>Continue only if you have just connected the indulgence server, or run <b>/indulgence</b>, in your own coding agent (Antigravity, Claude Code, Codex, OpenCode or another), and the name above is that agent's.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="request" value="${escapeHtml(request)}">
 <button class="primary" name="decision" value="allow">Continue with GitHub</button>

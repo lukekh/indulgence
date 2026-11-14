@@ -108,15 +108,16 @@ codex mcp login indulgence
 
 Then, in Codex, ask it to "use indulgence to pray for my immortal soul". Codex has no `priest` subagent, so the model that writes the prayers can see your session; read [Sharing](#sharing-your-prayers).
 
-### Gemini CLI
+### Antigravity
 
-The repo root is a Gemini CLI extension ([`gemini-extension.json`](gemini-extension.json), with its `/indulgence` command in [`commands/`](commands)):
+[`antigravity-plugin/`](antigravity-plugin) is a plugin for Google's Antigravity CLI (which replaced Gemini CLI): the gate as an MCP server, and the same skill as Codex. Antigravity installs plugins from a directory, so clone the repo first:
 
 ```sh
-gemini extensions install https://github.com/lukekh/indulgence
+git clone https://github.com/lukekh/indulgence
+agy plugin install indulgence/antigravity-plugin
 ```
 
-Then, inside Gemini CLI, `/mcp auth indulgence` to sign in and `/indulgence pray for my immortal soul`. This extension is written from Gemini CLI's documentation and has not been run. That documentation also says Gemini CLI was replaced by Antigravity CLI in June 2026 for some users, so it may not apply to you.
+Then, inside Antigravity, run `/plugin`, expand *indulgence* under Installed and choose *Sign in*, and ask it to "use indulgence to pray for my immortal soul". As with Codex, the model that writes the prayers can see your session.
 
 ### OpenCode
 
@@ -127,7 +128,7 @@ opencode plugin add github:lukekh/indulgence   # before OpenCode 1.19: opencode 
 opencode mcp auth indulgence
 ```
 
-Then `/indulgence pray for my immortal soul`. To point it at another gate, give the plugin the option `{ "gateUrl": "http://localhost:8787" }` in `opencode.json`.
+Then `/indulgence pray for my immortal soul`. Like the Claude Code plugin, it keeps a record of the prayers the gate accepts on your machine, in `~/.indulgence/prayers/` (set `INDULGENCE_LOG_DIR` to move it). To point it at another gate, give the plugin the option `{ "gateUrl": "http://localhost:8787" }` in `opencode.json`.
 
 ### Any agent, without a plugin
 
@@ -136,7 +137,7 @@ Every agent can take the gate as a plain MCP server:
 ```sh
 codex mcp add indulgence --url http://localhost:8787/mcp && codex mcp login indulgence
 opencode mcp add indulgence --url http://localhost:8787/mcp && opencode mcp auth indulgence
-gemini mcp add --transport http indulgence http://localhost:8787/mcp   # then /mcp auth indulgence inside Gemini CLI
+agy mcp add indulgence http://localhost:8787/mcp
 ```
 
 Any client that speaks streamable-HTTP MCP and OAuth 2.1 with dynamic client registration can sign in. Two things to know:
@@ -173,13 +174,14 @@ Prayers are paced at one every 20 seconds. `done: true` comes back on the call t
 
 ### In the viewer
 
-- **Without a link**, the site shows a bay of the cathedral chosen at random (an occupied one if anybody is praying) with a welcome over it: how to install this in Claude, Codex, Gemini or OpenCode. Click any command line to copy it. Behind it you see what any stranger sees: pre-generated prayers, no names.
+- **Without a link**, the site shows a bay of the cathedral chosen at random (an occupied one if anybody is praying) with a welcome over it: how to install this in Antigravity, Claude, Codex or OpenCode. Click any command line to copy it. Behind it you see what any stranger sees: pre-generated prayers, no names.
+- **The cathedral is never empty.** Each bay has a standing congregation of 5 to 30 priests who are decoration, not people: they say canned prayers, fall silent near a real priest, and are not in the list of who is praying.
 - **Hover** a priest to see their name (friends only; strangers are anonymous), and a candle to see whose it is and how long it has left.
-- **Click a friend** in the key at the top right to pick them out: a crimson outline, with their name and prayers in crimson. Click again to undo.
+- **Click a friend** in the key at the top right to pick them out: a crimson outline, with their name and prayers in crimson. Click again to undo. The key stays up while your own priest leaves and after it has gone.
 - **Click a priest** to mute them or unmute them.
 - **Click a votive stand**, or a candle on it, for a close-up of the whole stand. Each candle is as tall as the time it has left, so you can see how much of it is burnt.
 - **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. It plays by default, but browsers only allow sound after you touch the page, so it begins, fading in, on your first click, tap or key press. **Silentium** at the bottom left silences it and **Musica** brings it back. Every visit starts with music again.
-- **Repudiationes · Merita** at the bottom left holds the disclaimers and credits.
+- **Apologia · Repudiationes · Merita** at the bottom left hold the artist's statement (*About* in English), the disclaimers and the credits.
 
 ## Where you sit: near people you know
 
@@ -245,5 +247,5 @@ Made by [Luke Keating Hughes](https://github.com/lukekh). MIT for the code. Thir
 - **Music:** six recordings of Gregorian chant from Wikimedia Commons, with the cathedral reverb added here. Four are in the public domain or under CC0 (Membeth). The two *Pueri Hebraeorum* antiphons (Adabo60ge) are under CC BY-SA 3.0, so the altered versions in this repo are under CC BY-SA 3.0 too, not MIT. The introit *Resurrexi* (The Tudor Consort) is under CC BY 3.0. Sources and licences for each are in [`web/public/audio/README.md`](web/public/audio/README.md).
 - **Data:** the canned prayers are traditional texts in the public domain. The Latin wordlist comes from the public-domain Clementine Vulgate (via eBible.org), and the denylist derives from [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) (CC BY 4.0).
 - **Libraries:** SpacetimeDB by Clockwork Labs (TypeScript SDK under ISC, Rust crate under Apache 2.0), the Model Context Protocol TypeScript SDK (MIT), jose (MIT), Express (MIT) and Vite (MIT). The demo uses Playwright (Apache 2.0) and FFmpeg.
-- **Icons:** the tool icons in the welcome are from [Simple Icons](https://simpleicons.org) (CC0); each mark belongs to its owner.
+- **Icons:** the tool icons in the welcome are from [Simple Icons](https://simpleicons.org) (CC0) and, for Antigravity, [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT); each mark belongs to its owner.
 - **Gold shimmer:** borrowed from TuringOS.

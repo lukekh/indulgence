@@ -9,7 +9,8 @@
     "./server": "./opencode-plugin/index.js"
   },
   "files": [
-    "opencode-plugin"
+    "opencode-plugin",
+    "!opencode-plugin/*.test.js"
   ],
   "scripts": {
     "install:all": "npm --prefix gate install && npm --prefix web install && npm --prefix demo install",
@@ -19,6 +20,6 @@
     "quick": "npm --prefix demo run quick",
     "assets": "npm --prefix demo run assets",
     "video": "npm --prefix demo run video",
-    "test": "npm --prefix gate test && npm --prefix web test"
+    "test": "npm --prefix gate test && npm --prefix web test && node --test opencode-plugin/"
   }
 }

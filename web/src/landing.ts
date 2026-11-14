@@ -44,6 +44,24 @@ export function agents(gate: string): Agent[] {
   const inTerminal = (name: string, lines: string[]): Step => ({ before: `${OPENING}, `, accent: `for ${name}`, after: ', in your terminal run', prompt: 'shell', lines });
   return [
     {
+      id: 'antigravity',
+      name: 'Antigravity',
+      colour: '#3186ff', // the blue of Antigravity's own mark
+      // The plugin (antigravity-plugin/): the gate as an MCP server, and a skill that knows the
+      // rite. Antigravity installs plugins from a directory, so the repo is cloned first.
+      setup: [
+        inTerminal('Antigravity', ['git clone https://github.com/lukekh/indulgence', 'agy plugin install indulgence/antigravity-plugin']),
+        { before: 'Then inside ', accent: 'the Antigravity CLI', after: ' open the plugin and choose Sign in', prompt: 'agent', lines: ['/plugin'] },
+      ],
+      pray: ['Use indulgence to pray for my immortal soul'],
+      alternative: {
+        summary: 'Or connect without the plugin',
+        setup: [{ before: '', accent: 'For Antigravity', after: ', in your terminal run', prompt: 'shell', lines: [`agy mcp add indulgence ${mcp}`] }],
+        prayLead: 'and pray using',
+        pray: [PROMPT],
+      },
+    },
+    {
       id: 'claude',
       name: 'Claude',
       colour: '#d97757', // Claude's orange
@@ -71,26 +89,6 @@ export function agents(gate: string): Agent[] {
       alternative: {
         summary: 'Or connect without the plugin',
         setup: [{ before: '', accent: 'For Codex', after: ', in your terminal run', prompt: 'shell', lines: [`codex mcp add indulgence --url ${mcp}`, 'codex mcp login indulgence'] }],
-        prayLead: 'and pray using',
-        pray: [PROMPT],
-      },
-    },
-    {
-      id: 'gemini',
-      name: 'Gemini',
-      colour: '#4285f4', // Google blue
-      // The extension (gemini-extension.json and commands/ at the repo root).
-      setup: [
-        inTerminal('Gemini', ['gemini extensions install https://github.com/lukekh/indulgence']),
-        { before: 'Then inside ', accent: 'the Gemini CLI', after: ' run', prompt: 'agent', lines: ['/mcp auth indulgence'] },
-      ],
-      pray: ['/indulgence pray for my immortal soul'],
-      alternative: {
-        summary: 'Or connect without the extension',
-        setup: [
-          { before: '', accent: 'For Gemini', after: ', in your terminal run', prompt: 'shell', lines: [`gemini mcp add --transport http indulgence ${mcp}`] },
-          { before: 'Then inside ', accent: 'the Gemini CLI', after: ' run', prompt: 'agent', lines: ['/mcp auth indulgence'] },
-        ],
         prayLead: 'and pray using',
         pray: [PROMPT],
       },
@@ -238,7 +236,8 @@ export function setUpLanding(gate: string, doc: Document = document): Landing {
       choose(next.dataset.agent!);
     });
   });
-  choose(list[0]!.id);
+  // Tabs are in alphabetical order; the page opens on Claude Code, the one most visitors use.
+  choose('claude');
 
   let shown = false;
   let aside = false;

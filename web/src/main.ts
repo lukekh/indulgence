@@ -19,6 +19,7 @@ import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
 import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, spectate, GATE_URL, type ViewerGrant } from './net';
 import { setUpLanding } from './landing';
+import { congregation, crowds, npcTick, seatKey, type Npc } from './congregation';
 
 const SLOT = C.PACING_SLOT_MS;
 /**
@@ -29,6 +30,11 @@ const THURIFER_SHIFT_MS = Number(import.meta.env.VITE_DEMO_THURIFER_SHIFT_MS ?? 
 /** Height of a priest sprite above its feet, base px (LPC sheets are drawn at half size). */
 const HEAD = 30;
 const RETRY_FOR_MS = 120_000;
+/**
+ * The standing congregation (congregation.ts). Off in the demo recordings, whose scripted
+ * priests and mouse are placed for a cathedral without it (VITE_CONGREGATION=off).
+ */
+const CONGREGATION = import.meta.env.VITE_CONGREGATION !== 'off';
 /** Strangers nearest you whose (canned) prayers are written over the scene. */
 const STRANGER_PRAYERS = 2;
 
@@ -211,7 +217,14 @@ interface PriestView {
   label?: string;
   /** When it sat down in its pew (it prays only from then on); undefined once leaving. */
   seated?: number;
+  /** One of the standing congregation, not a row in the database. */
+  npc?: Npc;
+  /** An NPC too close to a real priest to pray without their words colliding: it only kneels. */
+  silent?: boolean;
 }
+
+/** Names of friends as last known, kept for the key once your own priest is leaving. */
+const knownLabels = new Map<bigint, string>();
 
 function planOf(p: Priest, entryY: number): PriestPlan {
   let candle: PriestPlan['candle'];
@@ -236,8 +249,7 @@ function planOf(p: Priest, entryY: number): PriestPlan {
   };
 }
 
-function currentPrayer(p: Priest, tick: PrayerTick | null | undefined): { text: string; real: boolean } | undefined {
-  if (!tick) return undefined;
+function currentPrayer(p: Priest, tick: { seq: number; cannedIdx: number }): { text: string; real: boolean } {
   for (const t of conn!.db.prayerText.iter()) {
     if (t.priestId === p.priestId && t.seq === tick.seq) return { text: t.text, real: true };
   }
@@ -293,7 +305,15 @@ function frame() {
   const drawables: Drawable[] = furniture(cam, x0, x1, yMax);
 
   const labels = new Map<bigint, string>();
-  for (const l of conn.db.viewerLabel.iter()) labels.set(l.priestId, l.label);
+  for (const l of conn.db.viewerLabel.iter()) {
+    labels.set(l.priestId, l.label);
+    knownLabels.set(l.priestId, l.label);
+  }
+  // When your priest sets off to leave, the cathedral forgets who your friends are. The key
+  // goes on showing them by the names it already had, for as long as they are still there.
+  if (ending || own?.state.tag === 'Departing' || (!own && lastOwnX !== undefined)) {
+    for (const [id, label] of knownLabels) if (!labels.has(id)) labels.set(id, label);
+  }
 
   const priests: PriestView[] = [];
   for (const p of conn.db.priest.iter()) {
@@ -311,6 +331,25 @@ function frame() {
   // until that priest kneels there.
   const lighters = new Map<bigint, Action>();
   for (const p of priests) if (p.row.state.tag === 'Departing' && p.row.candleId !== 0n) lighters.set(p.row.candleId, p.pose.action);
+  // The standing congregation, in every bay in view: not where a real priest has the seat, and
+  // silent where one sits close enough for their prayers to collide.
+  if (CONGREGATION) {
+    const real = priests.filter((p) => p.row.state.tag !== 'Departing');
+    const taken = new Set(real.map((p) => seatKey(p.row)));
+    for (let bay = Math.floor(x0 / C.BAY_W) - 1; bay <= Math.floor(x1 / C.BAY_W) + 1; bay++) {
+      for (const npc of congregation(bay)) {
+        if (taken.has(seatKey(npc))) continue;
+        const pose: Pose = { x: npc.x, y: npc.y, dir: 'up', action: 'kneel', t: t / 1000, alpha: 1 };
+        const feet = project(cam, npc.x, npc.y);
+        // Shaped like a database row, so that everything below treats it as any other stranger.
+        const row = { priestId: npc.id, x: npc.x, y: npc.y, bay: npc.bay, row: npc.row, half: npc.half, seat: npc.seat, vestment: { tag: npc.vestment }, state: { tag: 'Praying' }, candleId: 0n } as unknown as Priest;
+        priests.push({ row, pose, feet, seated: 0, npc, silent: real.some((p) => crowds(npc, p.row)) });
+        const v: VestmentName = vestmentName(npc.vestment);
+        drawables.push({ depth: pose.y, layer: LAYER.priest, x: pose.x, draw: (ctx: CanvasRenderingContext2D) => sprites!.draw(ctx, v, pose, feet[0], feet[1]) });
+      }
+    }
+  }
+
   const candles: (CandleView & { row: Candle; hit: [number, number, number, number] })[] = [];
   for (const c of conn.db.candle.iter()) {
     if (!candleShown(ms(c.litAt), t, lighters.get(c.candleId))) continue;
@@ -419,7 +458,7 @@ function frame() {
   // --- words over the scene ------------------------------------------------------------
   const ownPos = own ? [own.x, own.y] : [grant!.px, C.ROW_Y[0]!];
   const strangers = priests
-    .filter((p) => !p.label && p.row.priestId !== ownId)
+    .filter((p) => !p.label && p.row.priestId !== ownId && !p.silent)
     .sort((a, b) => Math.abs(a.row.x - ownPos[0]!) + Math.abs(a.row.y - ownPos[1]!) - (Math.abs(b.row.x - ownPos[0]!) + Math.abs(b.row.y - ownPos[1]!)))
     .slice(0, STRANGER_PRAYERS)
     .map((p) => p.row.priestId);
@@ -456,17 +495,18 @@ function frame() {
   for (const p of [...priests].sort((a, b) => rank(a) - rank(b))) {
     const id = p.row.priestId;
     const mine = id === ownId;
-    if (muted.has(id) || p.seated === undefined || t < p.seated) continue;
+    if (muted.has(id) || p.silent || p.seated === undefined || t < p.seated) continue;
     if (!(mine || p.label || strangers.includes(id) || id === hoveredPriest)) continue;
-    const tick = conn.db.prayerTick.priestId.find(id);
+    const dbTick = p.npc ? undefined : conn.db.prayerTick.priestId.find(id);
+    const tick = p.npc ? npcTick(p.npc, t) : dbTick ? { seq: dbTick.seq, cannedIdx: dbTick.cannedIdx, at: ms(dbTick.at) } : undefined;
     if (!tick) continue;
-    const key = `${tick.seq}:${ms(tick.at)}`;
+    const key = `${tick.seq}:${tick.at}`;
     let mem = recitals.get(id);
     if (!mem || mem.key !== key) {
       mem = { key, prev: mem?.cur };
       recitals.set(id, mem);
     }
-    mem.cur = schedule(currentPrayer(p.row, tick)!.text, Math.max(ms(tick.at), p.seated), SLOT);
+    mem.cur = schedule(p.npc ? cannedPrayer(tick.cannedIdx) : currentPrayer(p.row, tick).text, Math.max(tick.at, p.seated), SLOT);
     const spoken = spokenAt(mem.cur, mem.prev, t);
     if (!spoken.current) continue;
 
@@ -504,7 +544,8 @@ function frame() {
         const notes: string[] = [];
         if (p.row.state.tag === 'Departing') notes.push(p.row.candleId !== 0n ? 'going to light a candle' : 'leaving');
         else if (p.seated === undefined || t < p.seated) notes.push('on the way to a pew');
-        notes.push(muted.has(p.row.priestId) ? 'muted · click to unmute' : 'click to mute');
+        if (p.silent) notes.push('praying in silence');
+        else notes.push(muted.has(p.row.priestId) ? 'muted · click to unmute' : 'click to mute');
         cursorNote(dctx, mouse.x, mouse.y, notes, notePx);
       }
     } else if (hovered.kind === 'thurifer') {
@@ -568,8 +609,9 @@ function frame() {
     .filter((p) => p.label && p.row.priestId !== ownId)
     .map((p) => ({ id: p.row.priestId, name: p.label!, leaving: p.row.state.tag === 'Departing', marked: marked.has(p.row.priestId) }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  // (Once you have left, or are leaving, you are no longer among them: no key. Nor behind the close-up.)
-  if (spectator || ending || openStand !== undefined || own?.state.tag === 'Departing') {
+  // It stays while your priest leaves and after it has gone. (Not for a visitor without a link,
+  // who has no friends here, nor behind the close-up.)
+  if (spectator || openStand !== undefined) {
     keyPanel = undefined;
     keyRows = [];
   } else {
