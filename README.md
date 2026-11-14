@@ -181,6 +181,7 @@ Prayers are paced at one every 20 seconds. `done: true` comes back on the call t
 - **Click a priest** to mute them or unmute them.
 - **Click a votive stand**, or a candle on it, for a close-up of the whole stand. Each candle is as tall as the time it has left, so you can see how much of it is burnt.
 - **Music:** six Gregorian chants, sung in a cathedral, play in turn from when the page opens, beginning with the *Dies irae*. It plays by default, but browsers only allow sound after you touch the page, so it begins, fading in, on your first click, tap or key press. **Silentium** at the bottom left silences it and **Musica** brings it back. Every visit starts with music again.
+- **Link previews:** `web/index.html` carries Open Graph tags and `web/public/preview.png`, so a pasted link shows the cathedral. They name the public site's address; change them if you host it elsewhere.
 - **Apologia · Repudiationes · Merita** at the bottom left hold the artist's statement (*About* in English), the disclaimers and the credits.
 
 ## Where you sit: near people you know
