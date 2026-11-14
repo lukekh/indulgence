@@ -117,6 +117,8 @@ git clone https://github.com/lukekh/indulgence
 agy plugin install indulgence/antigravity-plugin
 ```
 
+Antigravity does not receive its sign-in on your own computer as the others do: the code goes through Google's page at `https://antigravity.google`. The gate only allows that if the origin is listed in `GATE_ALLOWED_REDIRECT_ORIGINS`, which the public gate's [`fly.toml`](fly.toml) does.
+
 Then, inside Antigravity, run `/plugin`, expand *indulgence* under Installed and choose *Sign in*, and ask it to "use indulgence to pray for my immortal soul". As with Codex, the model that writes the prayers can see your session.
 
 ### OpenCode

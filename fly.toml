@@ -19,6 +19,10 @@ primary_region = "iad"
   SPACETIMEDB_URI = "wss://maincloud.spacetimedb.com"
   SPACETIMEDB_MODULE = "indulgence"
   GATE_SIGNING_KID = "gate-1"
+  # Sign-in codes go to an application on the person's own computer, or to an https origin
+  # listed here. Antigravity does not listen locally: it receives the code through Google's
+  # relay page at this origin, so without it Antigravity cannot register to sign in.
+  GATE_ALLOWED_REDIRECT_ORIGINS = "https://antigravity.google"
   PORT = "8787"
   TRUST_PROXY = "1"
 
