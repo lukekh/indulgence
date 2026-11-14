@@ -76,7 +76,6 @@ const REJECT_HOLD_MS = 3000;
 const SAMPLING_RETRY_MS = 2000;
 const HEARTBEAT_EVERY_MS = 60_000;
 const ENDED_RETAIN_MS = 10 * 60_000;
-const TICKET_TTL_MS = 10 * 60_000;
 /** How long a link that confirms an account's deletion stays good. */
 export const DELETION_TTL_MS = 10 * 60_000;
 const MAX_QUEUED_CALLS = 3;
@@ -107,9 +106,12 @@ interface LiveSession {
   endedAt?: number;
 }
 
+/**
+ * A viewer link's ticket. It works again and again for as long as its priest is in the
+ * cathedral: while the session is live, and while the priest walks out after it ends.
+ */
 interface Ticket {
   sessionId: string;
-  expires: number;
 }
 
 export interface ViewerInfo {
@@ -412,7 +414,7 @@ export class SessionManager {
         work.push(this.store.heartbeat(s.id, s.cancelAt ? new Date(s.cancelAt) : undefined).catch(() => {}));
       }
     }
-    for (const [t, ticket] of this.tickets) if (ticket.expires < now) this.tickets.delete(t);
+    for (const [t, ticket] of this.tickets) if (!this.inCathedral(this.sessions.get(ticket.sessionId), now)) this.tickets.delete(t);
     await Promise.all(work);
   }
 
@@ -431,17 +433,32 @@ export class SessionManager {
 
   private issueTicket(sessionId: string): string {
     const t = randomBytes(16).toString('base64url'); // 128-bit
-    this.tickets.set(t, { sessionId, expires: this.clock.now() + TICKET_TTL_MS });
+    this.tickets.set(t, { sessionId });
     return t;
   }
 
-  /** Single use: a second redemption of the same ticket fails. */
+  /** Whether a session's priest is still in the cathedral: live, or walking out after it ended. */
+  private inCathedral(s: LiveSession | undefined, now = this.clock.now()): s is LiveSession {
+    if (!s) return false;
+    return !s.ended || (s.endedAt !== undefined && now - s.endedAt < C.PRIEST_REMOVE_AFTER_MS);
+  }
+
+  /**
+   * Reusable: the same ticket can be redeemed as often as you like until its priest has left
+   * the cathedral, so the link takes you back to your priest however many times you open it.
+   */
   async redeemTicket(ticket: unknown): Promise<ViewerInfo | undefined> {
     if (typeof ticket !== 'string') return undefined;
     const t = this.tickets.get(ticket);
-    this.tickets.delete(ticket);
-    if (!t || t.expires < this.clock.now()) return undefined;
-    return this.viewerInfo(t.sessionId);
+    if (!t) return undefined;
+    const s = this.sessions.get(t.sessionId);
+    if (!this.inCathedral(s)) {
+      this.tickets.delete(ticket);
+      return undefined;
+    }
+    s.px ??= await this.store.priestX(s.priestId, 3000);
+    if (s.px === undefined) return undefined;
+    return { viewerSub: s.viewerSub, priestId: s.priestId, px: s.px, sessionId: s.id };
   }
 
   /** For refreshing a viewer token: the account's live session, if any. */

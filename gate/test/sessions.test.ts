@@ -299,17 +299,37 @@ describe('vigil (sampling)', () => {
 });
 
 describe('viewer tickets', () => {
-  it('are single use and expire after 10 minutes', async () => {
+  it('can be used again and again while the priest is in the cathedral', async () => {
     const { sessions } = setup();
     const r1 = await begin(sessions);
     const t1 = r1.url.split('#t=')[1];
-    const info = await sessions.redeemTicket(t1);
-    expect(info).toMatchObject({ viewerSub: alice.viewerSub, sessionId: r1.session_id });
-    expect(await sessions.redeemTicket(t1)).toBeUndefined();
+    const first = await sessions.redeemTicket(t1);
+    expect(first).toMatchObject({ viewerSub: alice.viewerSub, sessionId: r1.session_id });
+    expect(await sessions.redeemTicket(t1)).toEqual(first);
+    // Time alone does not wear it out.
+    vi.advanceTimersByTime(60 * 60_000);
+    expect(await sessions.redeemTicket(t1)).toEqual(first);
+    expect(await sessions.redeemTicket('not-a-ticket-at-all-xx')).toBeUndefined();
+  });
 
-    const r2 = await begin(sessions, bob);
-    vi.advanceTimersByTime(10 * 60_000 + 1);
-    expect(await sessions.redeemTicket(r2.url.split('#t=')[1])).toBeUndefined();
+  it('still works while the priest walks out, and stops once it has gone', async () => {
+    const { sessions } = setup();
+    const r = await begin(sessions);
+    const t = r.url.split('#t=')[1];
+    await sessions.depart(alice, { session_id: r.session_id });
+    expect(await sessions.redeemTicket(t)).toMatchObject({ sessionId: r.session_id });
+    vi.advanceTimersByTime(C.PRIEST_REMOVE_AFTER_MS - 1000);
+    expect(await sessions.redeemTicket(t)).toMatchObject({ sessionId: r.session_id });
+    vi.advanceTimersByTime(2000);
+    expect(await sessions.redeemTicket(t)).toBeUndefined();
+  });
+
+  it("an earlier priest's link stops when a new session takes over and the old priest has gone", async () => {
+    const { sessions } = setup();
+    const old = (await begin(sessions)).url.split('#t=')[1];
+    await begin(sessions);
+    vi.advanceTimersByTime(C.PRIEST_REMOVE_AFTER_MS + 1);
+    expect(await sessions.redeemTicket(old)).toBeUndefined();
   });
 
   it('refresh works only while the session is live', async () => {
