@@ -12,7 +12,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Keys } from '../src/keys.js';
 import { SessionManager } from '../src/sessions.js';
-import { GateOAuthProvider } from '../src/oauth/provider.js';
+import { GateOAuthProvider, redirectAllowed } from '../src/oauth/provider.js';
 import { C } from '../../shared/constants.js';
 import { createApp, spectatorX } from '../src/server.js';
 import type { GateConfig } from '../src/config.js';
@@ -305,6 +305,17 @@ describe('sign-in, MCP and viewer tokens', () => {
     const mcpRes = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${body.token}` }, body: '{}' });
     expect(mcpRes.status).toBe(401);
     store.occupied = [];
+  });
+
+  it("accepts Antigravity's hosted callback only when its origin is listed", () => {
+    const relay = 'https://antigravity.google/oauth-callback';
+    expect(redirectAllowed(relay)).toBe(false);
+    expect(redirectAllowed(relay, ['https://antigravity.google'])).toBe(true);
+    // The listing is by origin: another host, or plain http, is still refused.
+    expect(redirectAllowed('https://antigravity.google.evil.example/oauth-callback', ['https://antigravity.google'])).toBe(false);
+    expect(redirectAllowed('http://antigravity.google/oauth-callback', ['https://antigravity.google'])).toBe(false);
+    // An application on this computer never needed listing.
+    expect(redirectAllowed('http://127.0.0.1:56465/callback')).toBe(true);
   });
 
   it('shows a visitor an empty bay near the first when nobody is praying', () => {

@@ -12,6 +12,17 @@ description: >
 Follow these steps exactly. Use only the `indulgence` MCP tools (`begin`, `pray`, `vigil`,
 `depart`, `delete_account`). Do not read files, run commands or call any other tool.
 
+## Before anything else
+
+If the `indulgence` MCP tools are not available to you in this session, the user has not signed
+in to the server yet. Do not look for them: do not read the plugin's files, start subagents or
+try another route. Tell the user this, and stop:
+
+```
+The indulgence server is not signed in. Sign in, then ask again:
+In a terminal: codex mcp login indulgence
+```
+
 ## Deleting the account
 
 Only if the user has explicitly asked to delete their indulgence account: call
