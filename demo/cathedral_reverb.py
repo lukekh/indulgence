@@ -7,12 +7,21 @@ in octave bands, each band decaying at the rate set by the room's boundary absor
 discrete early reflections from first- and second-order image sources of a shoebox nave.
 
     python3 cathedral_reverb.py in.ogg out.wav [seconds] [--loop]
+    python3 cathedral_reverb.py --ir out.wav
+    python3 cathedral_reverb.py --dry in.ogg out.wav
 
-By default the whole recording is used and the reverb tail runs on past its end. With
---loop the tail is wrapped round onto the start instead, so the result is exactly as long as
-the recording and, played on repeat, the last chord rings into the first with no gap.
+The first puts the reverb in the file. By default the whole recording is used and the reverb
+tail runs on past its end. With --loop the tail is wrapped round onto the start instead, so
+the result is exactly as long as the recording and, played on repeat, the last chord rings
+into the first with no gap.
+
+The viewer adds the reverb itself as its chants play (web/src/music.ts), since a dry
+recording compresses far better than a reverb tail. --ir writes the impulse response it
+uses. --dry evens out a recording's loudness and sets its level so that, mixed as the viewer
+mixes it, it comes out at LOUDNESS, like every other chant.
 """
 
+import json
 import subprocess
 import sys
 
@@ -37,6 +46,13 @@ AIR_M = [0.0001, 0.0003, 0.0006, 0.0011, 0.0024, 0.0072, 0.0230]
 # Choir in the chancel, listener halfway down the nave.
 SOURCE = np.array([16.0, 14.0, 2.5])
 LISTENER = np.array([58.0, 11.0, 1.7])
+
+# The viewer's mix, as in web/src/music.ts (DRY, WET): the chant as sung, and the nave's
+# reverb (through a 70 Hz high-pass) a little below it.
+VIEWER_DRY = 0.55
+VIEWER_WET = 0.85 * 0.55
+# Every chant's integrated loudness (LUFS) once the reverb is added.
+LOUDNESS = -20
 
 
 def rt60(alpha: float, m: float) -> float:
@@ -102,23 +118,67 @@ def early_reflections(n_samples: int) -> np.ndarray:
     return signal.sosfilt(sos, out, axis=0)
 
 
-def main():
-    args = [a for a in sys.argv[1:] if a != "--loop"]
-    loop = "--loop" in sys.argv[1:]
-    src, dst = args[0], args[1]
-    seconds = float(args[2]) if len(args) > 2 else None  # None: the whole recording
+def impulse_response() -> np.ndarray:
+    """The nave: early reflections and the late tail, scaled to unit energy. Always the same."""
     rng = np.random.default_rng(7)
-    for f, a, m in zip(BANDS, ALPHA, AIR_M):
-        print(f"  {f:>5} Hz  RT60 {rt60(a, m):.2f} s")
-
-    dry = load(src, seconds)
     tail_s = 1.2 * rt60(ALPHA[0], AIR_M[0])
     late = late_tail(tail_s, rng)
     early = early_reflections(len(late))
     # Early reflections carry about a third of the reverberant energy here.
     late *= np.sqrt(np.sum(early**2) / max(np.sum(late**2), 1e-12)) * 1.7
     ir = early + late
-    ir /= np.sqrt(np.sum(ir**2))
+    return ir / np.sqrt(np.sum(ir**2))
+
+
+def loudness(x: np.ndarray) -> float:
+    """Integrated loudness (LUFS), measured by ffmpeg."""
+    err = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-f", "f32le", "-ar", str(FS), "-ac", "2", "-i", "-", "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+        input=x.astype(np.float32).tobytes(),
+        capture_output=True,
+        check=True,
+    ).stderr.decode()
+    return float(json.loads(err[err.rindex("{") : err.rindex("}") + 1])["input_i"])
+
+
+def viewer_dry(src: str, dst: str):
+    """The recording for the viewer: loudness evened out, then set to come out at LOUDNESS in its mix."""
+    raw = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", src, "-af", f"loudnorm=I={LOUDNESS}:TP=-2:LRA=11,aresample={FS}", "-f", "f32le", "-ac", "2", "-"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    dry = np.frombuffer(raw, dtype=np.float32).reshape(-1, 2)
+    ir = impulse_response().astype(np.float32)
+    wet = np.stack([signal.oaconvolve(dry[:, ch], ir[:, ch]) for ch in range(2)], axis=1)
+    wet = signal.sosfilt(signal.butter(2, 70, btype="high", fs=FS, output="sos"), wet, axis=0).astype(np.float32)
+    wet *= VIEWER_WET
+    wet[: len(dry)] += VIEWER_DRY * dry
+    gain = 10 ** ((LOUDNESS - loudness(wet)) / 20)
+    out = dry * gain
+    wavfile.write(dst, FS, out.astype(np.float32))
+    print(f"wrote {dst}: {len(out) / FS:.1f} s, gain {20 * np.log10(gain):+.2f} dB, peak {20 * np.log10(np.max(np.abs(out))):.1f} dBFS")
+
+
+def main():
+    if sys.argv[1:2] == ["--ir"]:
+        ir = impulse_response()
+        wavfile.write(sys.argv[2], FS, ir.astype(np.float32))
+        print(f"wrote {sys.argv[2]}: {len(ir) / FS:.2f} s")
+        return
+    if sys.argv[1:2] == ["--dry"]:
+        viewer_dry(sys.argv[2], sys.argv[3])
+        return
+
+    args = [a for a in sys.argv[1:] if a != "--loop"]
+    loop = "--loop" in sys.argv[1:]
+    src, dst = args[0], args[1]
+    seconds = float(args[2]) if len(args) > 2 else None  # None: the whole recording
+    for f, a, m in zip(BANDS, ALPHA, AIR_M):
+        print(f"  {f:>5} Hz  RT60 {rt60(a, m):.2f} s")
+
+    dry = load(src, seconds)
+    ir = impulse_response()
 
     wet = np.stack([signal.oaconvolve(dry[:, ch], ir[:, ch]) for ch in range(2)], axis=1)[: len(dry) + len(ir)]
     if loop:
