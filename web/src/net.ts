@@ -1,4 +1,4 @@
-// Viewer access: trade the one-time ticket from the URL fragment for a view-only JWT, keep
+// Viewer access: trade the ticket from the URL fragment for a view-only JWT, keep
 // it in sessionStorage only, and refresh it while the priest is live.
 
 export const GATE_URL: string = (import.meta.env.VITE_GATE_URL as string | undefined)?.replace(/\/+$/, '') ?? 'http://localhost:8787';
@@ -17,12 +17,13 @@ export interface ViewerGrant {
 
 const KEY = 'indulgence.viewer';
 
-export function takeTicketFromUrl(): string | undefined {
-  const m = /[#&]t=([A-Za-z0-9_-]{16,64})/.exec(location.hash);
-  if (!m) return undefined;
-  // Drop the ticket from the address bar and history; it is single use anyway.
-  history.replaceState(null, '', location.pathname + location.search);
-  return m[1];
+/**
+ * The ticket in the link, if any. It stays in the address bar: the link works again and again
+ * until your priest has left the cathedral, so a reload, the back button or the link opened
+ * a second time all bring you back to your priest.
+ */
+export function ticketFromUrl(): string | undefined {
+  return /[#&]t=([A-Za-z0-9_-]{16,64})/.exec(location.hash)?.[1];
 }
 
 export function loadGrant(): ViewerGrant | undefined {

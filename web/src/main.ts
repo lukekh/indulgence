@@ -17,7 +17,7 @@ import { setUpMusic } from './music';
 import { closeUpMirrored, mirrorX, renderFrame, renderStand, slotHit, standPlacement, standSeed, FRAME, type StandCandle } from './stand';
 import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
-import { takeTicketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, spectate, GATE_URL, type ViewerGrant } from './net';
+import { ticketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, spectate, GATE_URL, type ViewerGrant } from './net';
 import { setUpLanding } from './landing';
 import { congregation, crowds, npcTick, seatKey, type Npc } from './congregation';
 
@@ -114,9 +114,8 @@ function closeWith(title: string, subtitle: string) {
 // ---------------------------------------------------------------------------
 
 async function start() {
-  // Redeem first: the ticket is single use, so lose as little time as possible before the
-  // grant is safely in sessionStorage.
-  const ticket = takeTicketFromUrl();
+  // The link's ticket can be redeemed as often as it is opened, until your priest has left.
+  const ticket = ticketFromUrl();
   const spritesLoading = PriestSprites.load();
   void loadFont();
   try {
@@ -136,7 +135,7 @@ async function start() {
   if (!grant) {
     phase = 'no-ticket';
     closingTitle = TITLE;
-    closingSubtitle = 'This link has already been used or has expired.';
+    closingSubtitle = 'This link has expired: its priest has left the cathedral.';
     return;
   }
   skew = grant.server_time - grant.received_at;

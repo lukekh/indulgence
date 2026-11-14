@@ -275,7 +275,7 @@ async function main() {
     if (MODE === 'sandbox') {
       await buildViewer(0);
       const begun = await cathedral.begin(INTENTION, BUDGET);
-      console.log(`\n  Your priest: ${begun.url}\n  (single-use link; ${'Ctrl+C'} departs everyone and shuts down)\n`);
+      console.log(`\n  Your priest: ${begun.url}\n  (the link works until your priest leaves; ${'Ctrl+C'} departs everyone and shuts down)\n`);
       for (let i = 0; ; i++) {
         const r = await cathedral.pray(i);
         if (r.done) break;

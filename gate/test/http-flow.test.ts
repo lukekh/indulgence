@@ -256,7 +256,7 @@ describe('sign-in, MCP and viewer tokens', () => {
   });
 
   let viewerToken = '';
-  it('trades the ticket once for a view-only SpacetimeDB token', async () => {
+  it('trades the ticket for a view-only SpacetimeDB token, as often as it is opened', async () => {
     const res = await fetch(`${base}/viewer-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: 'https://site.test' },
@@ -272,7 +272,10 @@ describe('sign-in, MCP and viewer tokens', () => {
     expect(body).toMatchObject({ uri: 'wss://stdb.test', module: 'indulgence' });
 
     const again = await fetch(`${base}/viewer-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket }) });
-    expect(again.status).toBe(410);
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { priest_id: string }).priest_id).toBe(body.priest_id);
+    const wrong = await fetch(`${base}/viewer-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket: 'x'.repeat(22) }) });
+    expect(wrong.status).toBe(410);
   });
 
   it('a viewer token is not an MCP access token, and vice versa', async () => {
