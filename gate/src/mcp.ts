@@ -1,7 +1,8 @@
 // The remote MCP server: five tools, no resources.
 //
 // Every tool result is a fixed template filled with numbers, ids and the viewer URL. No
-// result contains prayer text, intentions, names, argument values or rejection reasons.
+// result contains prayer text, intentions, names, argument values or rejection reasons: a
+// refused prayer gets the same advice whatever the reason, so the filter cannot be probed.
 // Arguments are validated by hand (not by a schema library) so validation errors cannot
 // echo input back to the model.
 
@@ -24,6 +25,20 @@ const AVG_PRAYER_TOKENS = 200;
 const bool = { type: 'boolean' } as const;
 const int = { type: 'integer' } as const;
 const str = { type: 'string' } as const;
+
+/** What a prayer must be to pass the filter (safety/), told to every client up front. */
+export const PRAYER_RULES =
+  'Write Latin only: most of the words must be common Latin words (as in the Vulgate), so keep rare or modern words few. ' +
+  `At most ${C.PRAYER_MAX_CHARS} characters, about ${C.PRAYER_MAX_WORDS} words. ` +
+  'Use only letters, spaces and . , : ? ! (no digits, brackets, slashes or other symbols). ' +
+  'Do not repeat yourself, and make each prayer different from the last.';
+
+/** Said with every refused prayer, the same whatever the reason. */
+export const REFUSED_LINES = [
+  'Not accepted, and nothing was spent: the prayer did not pass the filter.',
+  `Write a plainer prayer and call pray again. ${PRAYER_RULES}`,
+  `Send one pray call at a time and wait for each result. The session stays open; it ends after ${C.MAX_CONSECUTIVE_REJECTS} refusals in a row.`,
+];
 
 export const TOOLS: Tool[] = [
   {
@@ -69,8 +84,10 @@ export const TOOLS: Tool[] = [
   {
     name: 'pray',
     description:
-      `Submit one Latin prayer (at most ${C.PRAYER_MAX_CHARS} characters) for a session. ` +
-      'tier: "subagent" or "in_session". Returns done, accepted and left.',
+      `Submit one Latin prayer for a session. ${PRAYER_RULES} ` +
+      'tier: "subagent" or "in_session". Send one call at a time: each waits its turn, about twenty seconds. ' +
+      'Returns done, accepted and left. accepted: false means the prayer was refused and nothing was spent: ' +
+      'write a plainer one and call again. Stop only when done is true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,7 +193,9 @@ export async function callTool(sessions: SessionManager, name: string, rawArgs: 
     case 'pray': {
       const r = await sessions.pray(account, args, { signal: ctx.signal });
       if ('error' in r) return fail(r.error);
-      return ok({ done: r.done, accepted: r.accepted, left: r.left });
+      const result = { done: r.done, accepted: r.accepted, left: r.left };
+      // A refusal says what to do next, so an agent carries on instead of stopping.
+      return ok(result, !r.accepted && !r.done ? REFUSED_LINES : undefined);
     }
     case 'depart': {
       await sessions.depart(account, args);
