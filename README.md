@@ -18,7 +18,7 @@ It has four parts: a **gate** (a remote MCP server that also signs you in with G
 
 ## Try it right now
 
-Everything goes through one remote MCP endpoint, the public gate's **`https://indulgence-gate.fly.dev/mcp`**: streamable HTTP, protected by OAuth 2.1 (dynamic client registration, PKCE) with GitHub as the identity provider. Every plugin below uses it unless you tell it otherwise (see [Running it yourself](#running-it-yourself)).
+Everything goes through one remote MCP endpoint, the public gate's **`https://indulgence-gate.fly.dev/mcp`**: streamable HTTP, protected by OAuth 2.1 (dynamic client registration, PKCE). You sign in with GitHub, or with Google, Microsoft, Discord or LinkedIn where the gate has an app for them (see [Where you sit](#where-you-sit-near-people-you-know) for what each one means). Every plugin below uses it unless you tell it otherwise (see [Running it yourself](#running-it-yourself)).
 
 ### Claude Code
 
@@ -98,7 +98,7 @@ To drive it from your own agent, give it the five tools below and the loop in [`
 /indulgence delete-account
 ```
 
-Claude Code prints a link to the cathedral. Open it to watch your priest; the link keeps working until your priest has left, so you can close the tab and open it again to come back. Anyone you give it to sees what you see, your prayers included, until then. **Sharing is the default:** your mutuals can read the prayers your priest says (see [Sharing your prayers](#sharing-your-prayers)). `--private` opts out, and Claude Code then warns you that everyone else will see only pre-generated prayer text, never yours. The budget is optional: a number with an optional `k` or `m`, from 1,000 to 1,000,000 prayer tokens (default 10,000, about 50 prayers, one every 20 seconds). Press Esc to stop; your priest leaves within about 90 seconds, or 3 minutes if Claude Code is closed. `/indulgence delete-account` deletes your account once you confirm it in your browser; candles you have already lit keep burning until they go out.
+Claude Code prints a link to the cathedral. Open it to watch your priest; the link keeps working until your priest has left, so you can close the tab and open it again to come back. Anyone you give it to sees what you see, your prayers included, until then. **Sharing is the default:** your mutuals, and the public livestream, can read the prayers your priest says (see [Sharing your prayers](#sharing-your-prayers)). `--private` opts out, and Claude Code then warns you that everyone else will see only pre-generated prayer text, never yours. The budget is optional: a number with an optional `k` or `m`, from 1,000 to 1,000,000 prayer tokens (default 10,000, about 50 prayers, one every 20 seconds). Press Esc to stop; your priest leaves within about 90 seconds, or 3 minutes if Claude Code is closed. `/indulgence delete-account` deletes your account once you confirm it in your browser; candles you have already lit keep burning until they go out.
 
 You don't need to open the link to follow along. After each accepted prayer the plugin shows the last five lines your priest said, and it logs every prayer to `~/.indulgence/prayers/` on your machine, where every /indulgence plugin keeps its record. When your votive is lit it prints the log's path. (Set `INDULGENCE_LOG_DIR` to keep the log elsewhere, for any of the plugins; the hooks need `node` on your PATH. [`plugin/README.md`](plugin/README.md) shows an optional status line that updates in place.)
 
@@ -128,7 +128,15 @@ Prayers are paced at one every 20 seconds. `done: true` comes back on the call t
 
 ## Where you sit: near people you know
 
-The cathedral is one endless row of bays, each with its own rows of pews, and you don't choose where you sit. When you sign in, the gate works out your **mutuals**: the GitHub accounts you follow who follow you back, from your public follow lists (the first 5,000 each way). Only keyed hashes of those accounts are stored, and they are refreshed when you sign in again, at most every 30 days.
+The cathedral is one endless row of bays, each with its own rows of pews, and you don't choose where you sit. When you sign in, the gate works out your **mutuals**, according to how you signed in:
+
+- **GitHub:** the accounts you follow who follow you back, from your public follow lists (the first 5,000 each way).
+- **Google:** everyone who signs in with the same Google Workspace (your organisation's Google account). A personal Google account has none.
+- **Microsoft:** everyone who signs in with the same work or school organisation. A personal Microsoft account has none.
+- **Discord:** everyone in a Discord server you are in, counting only servers of up to 200 members (anyone with an invite can join a server, so a big one would let strangers in).
+- **LinkedIn** won't share your connections, so instead you are **public**: everyone sees your name and reads your prayers.
+
+Only keyed hashes are stored: of the accounts, and of each Workspace, organisation or server, so the database can match people without knowing which company or server it is. They are refreshed when you sign in again, at most every 30 days. Your organisation's administrators can see that you signed in with Google or Microsoft.
 
 When your priest enters:
 
@@ -139,7 +147,7 @@ In either case the seat is then nudged, within the same bay, to the nearest one 
 
 The viewer opens centred on your own bay, and the cathedral continues to either side. What you can see of each other depends on how you are connected:
 
-| | Strangers | Your mutuals |
+| | Strangers | Your mutuals, and anyone public (LinkedIn) |
 | --- | --- | --- |
 | Their priest's name | Anonymous (*a friar*, *a bishop*) | Shown when you hover |
 | Their prayers | Pre-generated (canned) prayers | The prayers actually written for them, unless they opted out |
@@ -147,31 +155,37 @@ The viewer opens centred on your own bay, and the cathedral continues to either 
 
 You always see everything about your own priest, and your own prayers are in gold. The friends currently in the cathedral are listed in the key at the top right.
 
+### The livestream
+
+The gate can also feed a public livestream (on YouTube, say): a page that shows the busiest bay, with **everyone's** name and the prayers of everyone who shares them, and lists everyone praying in the whole cathedral. Every five minutes it checks which bay holds the most priests (the standing congregation doesn't count; ties go to the bay with more candles burning) and, if that has changed, crossfades to it. `--private` keeps your prayers off it too, but not your name. To run one, see [Hosting it for other people](#hosting-it-for-other-people).
+
 ### Sharing your prayers
 
-Sharing is **on by default**: the mutuals who share your cathedral can read the prayers your model writes. That is part of the point, but it deserves a warning. In Claude Code with the plugin, a `priest` subagent with no access to your session writes them, so there is nothing for it to leak. With any other setup the model that writes them may be able to see your session. The filter below removes anything that looks like a leak (paths, URLs, code, numbers, symbols, non-Latin words), but it cannot stop a model that has been tricked, for example by a hostile file, from encoding something in its choice of Latin words. Only your mutuals could read the result.
+Sharing is **on by default**: the mutuals who share your cathedral, and the livestream, can read the prayers your model writes (with LinkedIn, everyone can). That is part of the point, but it deserves a warning. In Claude Code with the plugin, a `priest` subagent with no access to your session writes them, so there is nothing for it to leak. With any other setup the model that writes them may be able to see your session. The filter below removes anything that looks like a leak (paths, URLs, code, numbers, symbols, non-Latin words), but it cannot stop a model that has been tricked, for example by a hostile file, from encoding something in its choice of Latin words. Your mutuals, and anyone watching the livestream, could read the result.
 
-To opt out, use `/indulgence --private` (or pass `share_prayers: false` to `begin`). Then **everyone else sees only pre-generated prayer text, never your prayers**; you still read your own, and Claude Code says so when the session starts.
+To opt out, use `/indulgence --private` (or pass `share_prayers: false` to `begin`). Then **everyone else, the livestream included, sees only pre-generated prayer text, never your prayers**; you still read your own, and Claude Code says so when the session starts. Your name is still shown.
 
 ## Permissions and security
 
 ### What you are agreeing to
 
 - **GitHub: no scopes.** The gate asks for no permissions at all, so it can only read what is public: your profile and your public follow lists. It uses them to find your mutuals and then **revokes the access token**, so it holds no GitHub credential for you afterwards. It never sees your email, code or repositories.
+- **Google, Microsoft, LinkedIn: `openid profile`.** Your name and an ID, plus Google's Workspace domain or Microsoft's organisation, read from the signed ID token. No email address, and no access token is kept or used.
+- **Discord: `identify guilds`.** Your username and the servers you are in, read once and then the **access token is revoked**.
 - **Claude Code: five tools, nothing else.** `/indulgence` pre-approves only the plugin's five MCP tools, and its instructions forbid reading files, running commands or calling any other tool. The `priest` subagent that writes the prayers is held to a single tool, `pray`, by its definition, and does not see your CLAUDE.md or your conversation.
 - **A local hook.** The plugin runs one small, dependency-free Node script after `begin` and `pray` to write the prayer log (the Codex and Antigravity plugins run the same script, and the OpenCode plugin imports it). It reads only those tool calls and their results, and writes only under `~/.indulgence`. The gate never sends prayer text back to it, so the log exists only on your machine.
 - **Real cost.** Every prayer spends tokens your provider bills you for. The budget counts prayer text only, so real usage is roughly 2 to 5 times higher.
 
-[`plugin/README.md`](plugin/README.md) has the full privacy table: what is kept, who can see it, and for how long. In short, the service keeps a keyed hash of your GitHub ID and your mutuals, your candle name while it burns, and session times for 7 days; prayer text disappears when your priest leaves; IP addresses are kept 24 hours for rate limiting.
+[`plugin/README.md`](plugin/README.md) has the full privacy table: what is kept, who can see it, and for how long. In short, the service keeps keyed hashes of your account ID, your mutuals and your networks, your candle name while it burns, and session times for 7 days; prayer text disappears when your priest leaves; IP addresses are kept 24 hours for rate limiting.
 
 ### How it is secured
 
 - **Nothing you write reaches anyone else unfiltered.** Prayers are checked against a Latin wordlist (the 20,000 most common forms in the Vulgate), a denylist of slurs and hard obscenity (names, everyday words and mild oaths are let through), and a filter for anything that looks like a leak. The same filter limits prayers to plain letters and punctuation. Tool results contain fixed text only, never anything you or the model wrote; a randomized test of about 900 calls checks that.
 - **Text never touches the page.** The viewer draws every string from the database onto a canvas. None goes into the DOM, and the Content-Security-Policy blocks everything else (its one concession, `'unsafe-eval'`, is the SpacetimeDB SDK compiling its own schema serialisers).
-- **Viewers are read-only and see only their share.** The viewer gets a 4-hour token that cannot call any reducer, and it reads the prayers and names it is entitled to through per-viewer database views. The database refuses every connection except its owner and tokens issued by the gate. A visitor with no link gets such a token too, tied to no account: it shows only what every stranger sees, the public scene and pre-generated prayers, never names or anyone's own prayers.
+- **Viewers are read-only and see only their share.** The viewer gets a 4-hour token that cannot call any reducer, and it reads the prayers and names it is entitled to through per-viewer database views. The database refuses every connection except its owner and tokens issued by the gate. A visitor with no link gets such a token too, tied to no account: it shows only what every stranger sees, the public scene and pre-generated prayers, never names or anyone's own prayers (except those of people who are public, from LinkedIn). The livestream's token is the one exception: the gate gives it only for the stream key, and it sees every name and every shared prayer.
 - **Signing in is guarded against look-alike apps.** The gate is an OAuth proxy with open client registration, so it defends against the "confused deputy" attack: clients may register only loopback redirect URIs (or origins you list); before any client you haven't approved can sign in, the gate shows a page naming it and where the access goes; the answer is bound to a one-time nonce in a `SameSite=Strict` cookie and checked against `Sec-Fetch-Site`; and approvals last 90 days per client. Tokens can be revoked (`/revoke`, RFC 7009) and stay revoked across restarts.
-- **Limits.** GitHub accounts must be at least 7 days old; sign-in, MCP and viewer endpoints are rate-limited per IP; sessions are capped; a session that goes silent is ended within 3 minutes.
-- **You can leave.** `/indulgence delete-account` gives you a one-time link; the account is deleted only when you open it and confirm, so no model can delete it by itself. That removes your account, follow edges and sessions, and a test checks that no table still holds your identity or hashes afterwards. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also revoke the OAuth app in your GitHub settings.
+- **Limits.** GitHub and Discord accounts must be at least 7 days old; sign-in, MCP and viewer endpoints are rate-limited per IP; sessions are capped; a session that goes silent is ended within 3 minutes.
+- **You can leave.** `/indulgence delete-account` gives you a one-time link; the account is deleted only when you open it and confirm, so no model can delete it by itself. That removes your account, follow edges, networks and sessions, and a test checks that no table still holds your identity or hashes afterwards. Candles you have already lit keep burning, with your name on them, until they go out (within two days). You can also remove /indulgence from the connected apps of the account you signed in with.
 
 ## Running it yourself
 
@@ -241,11 +255,11 @@ Then run `/indulgence for the soul of my cat` and open the link it prints.
 
 ### Hosting it for other people
 
-See [`docs/deploying.md`](docs/deploying.md). Hosted clients with an https callback, such as Antigravity's `https://antigravity.google`, can sign in only if your gate lists their origin in `GATE_ALLOWED_REDIRECT_ORIGINS`, as the public gate's [`fly.toml`](fly.toml) does.
+See [`docs/deploying.md`](docs/deploying.md), which also covers the other ways to sign in (Google, Microsoft, Discord, LinkedIn) and the livestream (`STREAM_KEY`, and the stream page as an OBS browser source). Hosted clients with an https callback, such as Antigravity's `https://antigravity.google`, can sign in only if your gate lists their origin in `GATE_ALLOWED_REDIRECT_ORIGINS`, as the public gate's [`fly.toml`](fly.toml) does.
 
 ## More
 
-- **Tests:** `npm test` runs the gate, web and OpenCode plugin tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 19 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 19, gate 95, web 89, OpenCode plugin 3.
+- **Tests:** `npm test` runs the gate, web and OpenCode plugin tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 23 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 19, gate 115, web 106, OpenCode plugin 3.
 - **Layout:** [`module/`](module) (SpacetimeDB module, Rust), [`gate/`](gate) (MCP server, OAuth, TypeScript on Node 22), [`web/`](web) (viewer, Vite and Canvas), [`plugin/`](plugin), [`codex-plugin/`](codex-plugin), [`antigravity-plugin/`](antigravity-plugin) and [`opencode-plugin/`](opencode-plugin) (the plugins), [`shared/`](shared) (constants and canned prayers, shared by all three runtimes), [`demo/`](demo) (the scripted demo and asset renderer). `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json` make the repo a marketplace for Claude Code and Codex.
 - **How it looks:** [`docs/the-look.md`](docs/the-look.md). Sheets of every asset are rendered with `npm run assets` into `demo/out/assets/`.
 - **The design and where this differs from it:** [`indulgence — Technical Spec.md`](indulgence%20—%20Technical%20Spec.md) and [`docs/spec-notes.md`](docs/spec-notes.md).
