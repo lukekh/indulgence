@@ -19,10 +19,16 @@ export interface AccountInput {
   /** undefined keeps the stored choice; a new account then fails with `consent_required`. */
   labelMode?: LabelModeName;
   mutualHashes: string[];
+  /** Keyed hashes of the networks the person is in (Keys.networkCheck). */
+  networkChecks: string[];
+  /** Everyone may see this person's name and read their prayers. */
+  public: boolean;
 }
 
 export interface Store {
   upsertAccount(a: AccountInput): Promise<void>;
+  /** Register the livestream's viewer (the subject of its token), so it sees every name. */
+  setBroadcaster(viewerSub: string): Promise<void>;
   /**
    * On every token refresh: fails with `no_account` once the account is deleted, or
    * `revoked` if the grant (`grant`, see GateOAuthProvider.grantKey) was revoked after the

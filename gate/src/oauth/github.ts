@@ -1,6 +1,9 @@
 // GitHub OAuth App calls. No scopes are requested: the public profile and public follow
 // lists need none. The user token is used for these calls only and then revoked.
 
+import { validLogin } from '../safety/index.js';
+import type { IdentityProvider } from './identity.js';
+
 export interface GitHubUser {
   id: number;
   login: string;
@@ -100,4 +103,37 @@ export class RealGitHub implements GitHubApi {
 export function mutualIds(following: number[], followers: number[]): number[] {
   const f = new Set(following);
   return [...new Set(followers.filter((id) => f.has(id)))];
+}
+
+const MAX_FOLLOWS = 5000;
+
+/** GitHub as a way in: the network is mutual follows. */
+export function githubIdentity(api: GitHubApi): IdentityProvider {
+  return {
+    id: 'github',
+    label: 'GitHub',
+    authorizeUrl: (state, redirectUri) => api.authorizeUrl(state, redirectUri),
+    async callback(query, _state, redirectUri) {
+      if (typeof query.code !== 'string') throw new Error('no code');
+      const token = await api.exchangeCode(query.code, redirectUri);
+      try {
+        const user = await api.user(token);
+        if (!validLogin(user.login)) throw new Error('unexpected login');
+        const [following, followers] = await Promise.all([api.followIds(token, 'following', MAX_FOLLOWS), api.followIds(token, 'followers', MAX_FOLLOWS)]);
+        return {
+          provider: 'github',
+          id: String(user.id),
+          login: user.login,
+          name: user.name,
+          mutualIds: mutualIds(following, followers).map(String),
+          networks: [],
+          public: false,
+          createdAt: new Date(user.created_at),
+        };
+      } finally {
+        // The user token is never stored or logged; revoke it now that mutuals are known.
+        void api.revoke(token).catch(() => {});
+      }
+    },
+  };
 }

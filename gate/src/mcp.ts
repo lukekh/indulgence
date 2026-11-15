@@ -31,7 +31,7 @@ export const TOOLS: Tool[] = [
     description:
       `Start an /indulgence session. intention: the user's words, verbatim, at most ${C.INTENTION_MAX_CHARS} characters. ` +
       `budget_tokens: prayer-token budget, ${C.BUDGET_MIN}–${C.BUDGET_MAX}, default ${C.BUDGET_DEFAULT}. ` +
-      'share_prayers: default true, so mutuals can read the prayers; false keeps them private, and everyone else sees only pre-generated prayers. ' +
+      'share_prayers: default true, so mutuals (and the public livestream) can read the prayers; false keeps them private, and everyone else sees only pre-generated prayers. ' +
       'Returns session_id, url, mode ("sampling" or "pray"), budget_tokens and share_prayers.',
     inputSchema: {
       type: 'object',
@@ -116,8 +116,8 @@ export const ERROR_TEXT: Record<ErrorCode | 'unauthenticated' | 'unknown_tool', 
   rate_limited: 'Error: too many sessions started in the last hour. Try again later.',
   full: 'Error: the cathedral is full. Try again later.',
   unavailable: 'Error: the cathedral is unavailable. Try again later.',
-  no_account: 'Error: account not found. Reconnect the indulgence MCP server to sign in with GitHub again.',
-  unauthenticated: 'Error: not signed in. Reconnect the indulgence MCP server to sign in with GitHub.',
+  no_account: 'Error: account not found. Reconnect the indulgence MCP server to sign in again.',
+  unauthenticated: 'Error: not signed in. Reconnect the indulgence MCP server to sign in.',
   unknown_tool: 'Error: unknown tool.',
 };
 
@@ -163,8 +163,8 @@ export async function callTool(sessions: SessionManager, name: string, rawArgs: 
           `Budget: ${r.budget_tokens} prayer tokens (roughly ${prayers} prayers, one every ${C.PACING_SLOT_MS / 1000} seconds).`,
           'Real token usage is roughly 2 to 5 times the prayer-token budget.',
           r.share_prayers
-            ? 'Your mutuals can read your prayers; strangers see pre-generated ones. Pass share_prayers: false to keep them private.'
-            : 'Sharing is off: everyone else will see only pre-generated prayer text, never your prayers.',
+            ? 'Your mutuals, and the public livestream, can read your prayers; strangers see pre-generated ones. Pass share_prayers: false to keep them private.'
+            : 'Sharing is off: everyone else, the livestream included, will see only pre-generated prayer text, never your prayers.',
         ],
       );
     }

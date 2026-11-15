@@ -89,15 +89,21 @@ export class StdbStore implements Store {
 
   upsertAccount(a: AccountInput) {
     return this.call(() =>
-      this.conn.reducers.upsertAccount({
+      this.conn.reducers.signIn({
         viewerSub: a.viewerSub,
         ghHash: a.ghHash,
         ghLogin: a.ghLogin,
         ghName: a.ghName,
         labelMode: a.labelMode ? { tag: a.labelMode } : undefined,
         mutualHashes: a.mutualHashes,
+        networkChecks: a.networkChecks,
+        public: a.public,
       }),
     );
+  }
+
+  setBroadcaster(viewerSub: string) {
+    return this.call(() => this.conn.reducers.setBroadcaster({ viewerSub }));
   }
 
   touchAccount(ghHash: string, grant: string, issuedAtS: number) {

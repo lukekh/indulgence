@@ -28,6 +28,9 @@ export class DeferredStore implements Store {
   async upsertAccount(a: AccountInput) {
     return this.s.upsertAccount(a);
   }
+  async setBroadcaster(viewerSub: string) {
+    return this.s.setBroadcaster(viewerSub);
+  }
   async touchAccount(ghHash: string, grant: string, issuedAtS: number) {
     return this.s.touchAccount(ghHash, grant, issuedAtS);
   }

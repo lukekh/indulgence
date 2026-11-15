@@ -66,7 +66,7 @@ describe('tool results', () => {
     let acceptedMarked = 0;
     for (let trial = 0; trial < 150; trial++) {
       const store = new FakeStore();
-      store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: 'Alice Secret', mutualHashes: [], labelMode: 'FullName' });
+      store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: 'Alice Secret', mutualHashes: [], networkChecks: [], public: false, labelMode: 'FullName' });
       const sessions = new SessionManager(store, 'https://site.test');
       // Intentions, prayers and names are all user-written; mark each one.
       const marker = `Zq${trial}x${Math.floor(r() * 1e9).toString(36)}`;

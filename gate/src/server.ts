@@ -1,7 +1,7 @@
 // Express app: OAuth/OIDC endpoints, the MCP endpoint and viewer tokens.
 
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
@@ -27,7 +27,12 @@ export interface AppDeps {
   isStoreReady: () => boolean;
   /** The x of every priest in a pew, for choosing the bay a visitor without a link is shown. */
   occupiedXs?: () => number[];
+  /** Register the livestream's viewer with the module (Store.setBroadcaster). */
+  setBroadcaster?: (viewerSub: string) => Promise<void>;
 }
+
+/** The livestream's token subject: one viewer, the same every time, never an account's. */
+export const BROADCAST_SUB = 'broadcast';
 
 interface TransportEntry {
   transport: StreamableHTTPServerTransport;
@@ -211,6 +216,23 @@ export function createApp(deps: AppDeps): { app: Express; closeIdleTransports: (
   app.use('/spectator-token', rateLimit('spectator', 20), cors);
   app.post('/spectator-token', async (_req, res) => {
     res.json(await viewerResponse({ viewerSub: `${SPECTATOR_PREFIX}${randomUUID()}`, priestId: 0n, px: spectatorX(deps.occupiedXs?.() ?? []) }));
+  });
+
+  // The livestream (the site's #stream=<key> page, captured by OBS): for the key, a viewer
+  // token whose identity the module gives every priest's name, and so every shared prayer.
+  // Asked for again with the key to refresh it. Without STREAM_KEY there is no stream.
+  app.use('/broadcast-token', rateLimit('broadcast', 10), cors);
+  app.post('/broadcast-token', express.json({ limit: '1kb' }), async (req, res) => {
+    if (!cfg.streamKey || !deps.setBroadcaster) return void res.status(404).json({ error: 'no_stream' });
+    const key = (req.body as { key?: unknown } | undefined)?.key;
+    const digest = (s: string) => createHash('sha256').update(s).digest();
+    if (typeof key !== 'string' || !timingSafeEqual(digest(key), digest(cfg.streamKey))) return void res.status(401).json({ error: 'invalid_key' });
+    try {
+      await deps.setBroadcaster(BROADCAST_SUB);
+    } catch {
+      return void res.status(503).json({ error: 'unavailable' });
+    }
+    res.json(await viewerResponse({ viewerSub: BROADCAST_SUB, priestId: 0n, px: 0 }));
   });
 
   // --- Deleting an account ---------------------------------------------------------

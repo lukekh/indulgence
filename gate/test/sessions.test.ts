@@ -9,7 +9,7 @@ const bob = { ghHash: 'b'.repeat(32), viewerSub: 'v.bob' };
 function setup() {
   const store = new FakeStore();
   for (const a of [alice, bob]) {
-    store.accounts.set(a.ghHash, { ...a, ghLogin: 'x', ghName: '', mutualHashes: [], labelMode: 'Username' });
+    store.accounts.set(a.ghHash, { ...a, ghLogin: 'x', ghName: '', mutualHashes: [], networkChecks: [], public: false, labelMode: 'Username' });
   }
   const sessions = new SessionManager(store, 'https://site.test');
   return { store, sessions };
