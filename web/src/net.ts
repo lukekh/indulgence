@@ -75,3 +75,21 @@ export function spectate() {
 export function refreshGrant(token: string) {
   return post('/viewer-token/refresh', { headers: { Authorization: `Bearer ${token}` } });
 }
+
+/**
+ * The livestream's grant, for the key in its link: it sees every priest's name and every
+ * shared prayer. Asked for again, with the key, to refresh it. `refused` is a wrong key (401)
+ * or a gate with no stream set up (404); anything else may be worth trying again.
+ */
+export async function broadcastGrant(key: string): Promise<ViewerGrant | 'refused' | undefined> {
+  const sent = Date.now();
+  const res = await fetch(`${GATE_URL}/broadcast-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  });
+  if (res.status === 401 || res.status === 404) return 'refused';
+  if (!res.ok) return undefined;
+  const body = (await res.json()) as Omit<ViewerGrant, 'received_at'>;
+  return { ...body, received_at: Math.round((sent + Date.now()) / 2) };
+}

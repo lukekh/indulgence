@@ -1,5 +1,6 @@
 // /indulgence viewer: trades the ticket for a view-only token, subscribes to its field of
-// view and draws the cathedral around its own priest.
+// view and draws the cathedral around its own priest. Opened as `#stream=<key>` it is the
+// livestream instead (stream.ts): the busiest bay, with everyone named.
 
 import { C, type CandleName, type VestmentName } from '../../shared/constants';
 import { DbConnection } from './module_bindings';
@@ -10,14 +11,15 @@ import { AMBIENT, standRect, drawStatic, furniture, candleDrawable, candleFlame,
 import { ditherFrame } from './dither';
 import { PriestSprites, vestmentName, thuriferHand, thuribleBowl, type Side } from './sprites';
 import { thurifersBetween, thuriferX, swing, NPC_LANE_Y, THURIFER_PRAYER } from './npc';
-import { titleOver, cursorNote, drawLine, hoverText, loadFont, measureTag, nameTag, overlaps, placeLine, textSize, CRIMSON, type Rect, type TagStyle } from './text';
-import { drawKey, type KeyEntry, type KeyRow } from './key';
+import { titleOver, cursorNote, drawLine, font, hoverText, loadFont, measureTag, nameTag, overlaps, placeLine, plainText, textSize, CRIMSON, DIM, type Rect, type TagStyle } from './text';
+import { capKey, drawKey, keyCapacity, type KeyEntry, type KeyRow } from './key';
+import { streamKeyFromUrl, siteAddress, leadingBay, Director } from './stream';
 import { setUpNotices } from './notices';
 import { setUpMusic } from './music';
 import { closeUpMirrored, mirrorX, renderFrame, renderStand, slotHit, standPlacement, standSeed, FRAME, type StandCandle } from './stand';
 import { schedule, spokenAt, LINGER_MS, type Recital } from './recital';
 import { cannedPrayer } from './canned';
-import { ticketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, spectate, GATE_URL, type ViewerGrant } from './net';
+import { ticketFromUrl, loadGrant, saveGrant, clearGrant, redeemTicket, refreshGrant, spectate, broadcastGrant, GATE_URL, type ViewerGrant } from './net';
 import { setUpLanding } from './landing';
 import { congregation, crowds, npcTick, seatKey, type Npc } from './congregation';
 
@@ -83,6 +85,16 @@ let subscribed = false;
  * it. There is no priest of their own, so nothing is dismissed and nothing ends.
  */
 let spectator = false;
+/**
+ * The livestream's key, if this page is the livestream (`#stream=<key>`): it shows the busiest
+ * bay, names everyone, never ends, and takes no clicks.
+ */
+const streamKey = streamKeyFromUrl(location.hash);
+const stream = streamKey !== undefined;
+const director = new Director();
+/** A still of the last frame before the stream moved, faded out over the new bay. */
+const fadeStill = document.createElement('canvas');
+let streamRetrying = false;
 
 const muted = new Set<bigint>();
 /** Friends picked out from the key: crimson outline, crimson name. */
@@ -102,7 +114,7 @@ let standPanel: Rect | undefined;
 const now = () => Date.now() + skew;
 
 function closeWith(title: string, subtitle: string) {
-  if (spectator || phase === 'closing' || phase === 'closed') return;
+  if (spectator || stream || phase === 'closing' || phase === 'closed') return;
   phase = 'closing';
   closingSince = Date.now();
   closingTitle = title;
@@ -114,6 +126,7 @@ function closeWith(title: string, subtitle: string) {
 // ---------------------------------------------------------------------------
 
 async function start() {
+  if (stream) return startStream();
   // The link's ticket can be redeemed as often as it is opened, until your priest has left.
   const ticket = ticketFromUrl();
   const spritesLoading = PriestSprites.load();
@@ -144,44 +157,108 @@ async function start() {
   setInterval(() => void keepTokenFresh(), 30 * 60_000);
 }
 
+/** The livestream: its grant comes from the key in the link, and is asked for until it comes. */
+async function startStream() {
+  document.body.classList.add('stream');
+  const spritesLoading = PriestSprites.load();
+  void loadFont();
+  let g: ViewerGrant | 'refused' | undefined;
+  while (!(g = await broadcastGrant(streamKey!).catch(() => undefined))) await new Promise((r) => setTimeout(r, 15_000));
+  sprites = await spritesLoading;
+  if (g === 'refused') {
+    phase = 'no-ticket';
+    closingTitle = TITLE;
+    closingSubtitle = 'This stream link is not valid.';
+    return;
+  }
+  grant = g;
+  skew = g.server_time - g.received_at;
+  connect(g);
+  setInterval(() => void keepTokenFresh(), 30 * 60_000);
+}
+
+/** After the connection has given up: start again with a fresh grant, for as long as it takes. */
+async function reconnectStream() {
+  if (streamRetrying) return;
+  streamRetrying = true;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 15_000));
+    const g = await broadcastGrant(streamKey!).catch(() => undefined);
+    if (g && g !== 'refused') {
+      streamRetrying = false;
+      grant = g;
+      skew = g.server_time - g.received_at;
+      subscribed = false;
+      const old = conn;
+      connect(g);
+      try {
+        old?.disconnect();
+      } catch {
+        // already closed
+      }
+      return;
+    }
+  }
+}
+
+/** A fresh grant: the livestream asks again with its key; any other viewer trades in its token. */
+async function renewGrant(): Promise<ViewerGrant | undefined> {
+  if (stream) {
+    const g = await broadcastGrant(streamKey!).catch(() => undefined);
+    return g === 'refused' ? undefined : g;
+  }
+  return refreshGrant(grant!.token);
+}
+
 async function keepTokenFresh() {
   if (!grant || phase === 'closing' || phase === 'closed') return;
   if (grant.expires_at - Date.now() > 90 * 60_000) return;
-  const next = await refreshGrant(grant.token).catch(() => undefined);
+  const next = await renewGrant().catch(() => undefined);
   if (next) {
     grant = next;
-    if (!spectator) saveGrant(next);
+    if (!spectator && !stream) saveGrant(next);
   }
 }
 
 function connect(g: ViewerGrant) {
   const lo = g.px - C.VIEW_HALF_WIDTH;
   const hi = g.px + C.VIEW_HALF_WIDTH;
-  conn = DbConnection.builder()
+  // The livestream may give up on a connection and make another: the old one then has no say.
+  let self: DbConnection | undefined;
+  const stale = () => self !== undefined && self !== conn;
+  conn = self = DbConnection.builder()
     .withUri(g.uri)
     .withDatabaseName(g.module)
     .withToken(g.token)
     .withTokenProvider(async () => {
-      const next = await refreshGrant(grant!.token);
+      const next = await renewGrant();
       if (!next) throw new Error('session ended');
       grant = next;
-      if (!spectator) saveGrant(next);
+      if (!spectator && !stream) saveGrant(next);
       return next.token;
     })
     .withAutomaticReconnect({ minDelayMs: 1000, maxDelayMs: 15_000 })
     .onConnect(() => {
+      if (stale()) return;
       disconnectedAt = undefined;
       if (phase === 'reconnecting' || phase === 'loading') phase = 'live';
     })
     .onDisconnect((_ctx, _err, nextAttempt) => {
-      if (phase === 'closing' || phase === 'closed') return;
+      if (stale() || phase === 'closing' || phase === 'closed') return;
       disconnectedAt ??= Date.now();
-      if (nextAttempt === undefined) closeWith(DISMISSAL, 'The connection to the cathedral was lost.');
-      else phase = 'reconnecting';
+      if (nextAttempt !== undefined) phase = 'reconnecting';
+      else if (stream) {
+        // The livestream never ends: it starts again with a fresh grant.
+        phase = 'reconnecting';
+        void reconnectStream();
+      } else closeWith(DISMISSAL, 'The connection to the cathedral was lost.');
     })
     .onConnectError(() => {
+      if (stale()) return;
       disconnectedAt ??= Date.now();
-      if (phase === 'loading') closeWith(TITLE, 'Could not reach the cathedral.');
+      if (stream) {
+        if (phase === 'loading') void reconnectStream();
+      } else if (phase === 'loading') closeWith(TITLE, 'Could not reach the cathedral.');
     })
     .build();
 
@@ -189,20 +266,33 @@ function connect(g: ViewerGrant) {
     if (p.priestId === ownId) closeWith(DISMISSAL, endLine(p.candleId));
   });
 
-  // The field of view never changes: seated priests do not move.
+  // The field of view never changes: seated priests do not move. The livestream takes the
+  // whole cathedral, to find the busiest bay and to name everyone in it. Anyone else also
+  // takes the public names and prayers (people signed in with LinkedIn), which are few.
+  const queries = stream
+    ? ['SELECT * FROM priest', 'SELECT * FROM prayer_tick', 'SELECT * FROM candle']
+    : [
+        `SELECT * FROM priest WHERE x >= ${lo} AND x < ${hi}`,
+        `SELECT * FROM prayer_tick WHERE x >= ${lo} AND x < ${hi}`,
+        `SELECT * FROM candle WHERE x >= ${lo} AND x < ${hi}`,
+        'SELECT * FROM public_label',
+        'SELECT * FROM public_prayer',
+      ];
   conn
     .subscriptionBuilder()
     .onApplied(() => {
+      if (stale()) return;
       subscribed = true;
-      if (!spectator && !conn!.db.priest.priestId.find(ownId)) closeWith(DISMISSAL, 'Your priest has already left.');
+      if (!spectator && !stream && !conn!.db.priest.priestId.find(ownId)) closeWith(DISMISSAL, 'Your priest has already left.');
     })
-    .subscribe([
-      `SELECT * FROM priest WHERE x >= ${lo} AND x < ${hi}`,
-      `SELECT * FROM prayer_tick WHERE x >= ${lo} AND x < ${hi}`,
-      `SELECT * FROM candle WHERE x >= ${lo} AND x < ${hi}`,
-      'SELECT * FROM viewer_label',
-      'SELECT * FROM prayer_text',
-    ]);
+    .subscribe([...queries, 'SELECT * FROM viewer_label', 'SELECT * FROM prayer_text']);
+}
+
+/** The busiest bay, among the priests in the database (never the congregation or thurifer). */
+function chooseBay(current: number | undefined): number {
+  const priests = [...conn!.db.priest.iter()].map((p) => ({ bay: p.bay, departing: p.state.tag === 'Departing' }));
+  const candles = [...conn!.db.candle.iter()].map((c) => ({ x: c.x, litAt: ms(c.litAt), expiresAt: ms(c.expiresAt) }));
+  return leadingBay(priests, candles, now(), current);
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +342,10 @@ function currentPrayer(p: Priest, tick: { seq: number; cannedIdx: number }): { t
   for (const t of conn!.db.prayerText.iter()) {
     if (t.priestId === p.priestId && t.seq === tick.seq) return { text: t.text, real: true };
   }
+  // A public priest's (signed in with LinkedIn), for everyone.
+  for (const t of conn!.db.publicPrayer.priest_id.filter(p.priestId)) {
+    if (t.seq === tick.seq) return { text: t.text, real: true };
+  }
   return { text: cannedPrayer(tick.cannedIdx), real: false };
 }
 
@@ -267,6 +361,14 @@ function frame() {
   }
   const toDisplay = (bx: number, by: number): [number, number] => [offX + bx * scale, offY + by * scale];
   const textPx = textSize(scale);
+
+  // The livestream chooses its bay; when it moves, the frame still on the display is kept to
+  // fade out over the new one.
+  if (stream && conn && subscribed && director.tick(Date.now(), chooseBay)) {
+    fadeStill.width = display.width;
+    fadeStill.height = display.height;
+    fadeStill.getContext('2d')!.drawImage(display, 0, 0);
+  }
 
   dctx.fillStyle = '#0a0909';
   dctx.fillRect(0, 0, display.width, display.height);
@@ -286,8 +388,9 @@ function frame() {
   if (own?.state.tag === 'Departing' && !ending && t - ms(own.stateSince) > (own.candleId !== 0n ? C.CANDLE_LIT_AFTER_MS : C.PRIEST_REMOVE_AFTER_MS)) {
     closeWith(DISMISSAL, endLine(own.candleId));
   }
-  // Your bay's altar at the top centre of the screen; pews run on past the bottom.
-  const cam = cameraFor(bayCentreX(lastOwnX ?? grant!.px), vp);
+  // Your bay's altar at the top centre of the screen (or the busiest bay's, on the
+  // livestream); pews run on past the bottom.
+  const cam = cameraFor(bayCentreX(stream ? (director.bay ?? 0) * C.BAY_W : (lastOwnX ?? grant!.px)), vp);
   const { x0, x1, yMax } = visibleTiles(cam, vp);
   const entryY = Math.max(C.ENTRY_Y, yMax + 2);
 
@@ -308,10 +411,22 @@ function frame() {
     labels.set(l.priestId, l.label);
     knownLabels.set(l.priestId, l.label);
   }
+  for (const id of knownLabels.keys()) if (!conn.db.priest.priestId.find(id)) knownLabels.delete(id);
   // When your priest sets off to leave, the cathedral forgets who your friends are. The key
   // goes on showing them by the names it already had, for as long as they are still there.
-  if (ending || own?.state.tag === 'Departing' || (!own && lastOwnX !== undefined)) {
+  // So does the livestream for anyone leaving, whose name the cathedral forgets as they rise.
+  if (stream || ending || own?.state.tag === 'Departing' || (!own && lastOwnX !== undefined)) {
     for (const [id, label] of knownLabels) if (!labels.has(id)) labels.set(id, label);
+  }
+  // Public priests (signed in with LinkedIn) are named for everyone, but are not friends: they
+  // stay out of the key.
+  const publicOnly = new Set<bigint>();
+  if (!stream) {
+    for (const l of conn.db.publicLabel.iter()) {
+      if (labels.has(l.priestId)) continue;
+      labels.set(l.priestId, l.label);
+      publicOnly.add(l.priestId);
+    }
   }
 
   const priests: PriestView[] = [];
@@ -455,7 +570,7 @@ function frame() {
   display.style.cursor = clickable ? 'pointer' : 'default';
 
   // --- words over the scene ------------------------------------------------------------
-  const ownPos = own ? [own.x, own.y] : [grant!.px, C.ROW_Y[0]!];
+  const ownPos = own ? [own.x, own.y] : stream ? [bayCentreX((director.bay ?? 0) * C.BAY_W), C.ROW_Y[0]!] : [grant!.px, C.ROW_Y[0]!];
   const strangers = priests
     .filter((p) => !p.label && p.row.priestId !== ownId && !p.silent)
     .sort((a, b) => Math.abs(a.row.x - ownPos[0]!) + Math.abs(a.row.y - ownPos[1]!) - (Math.abs(b.row.x - ownPos[0]!) + Math.abs(b.row.y - ownPos[1]!)))
@@ -463,10 +578,20 @@ function frame() {
     .map((p) => p.row.priestId);
 
   // Names: yours always; anyone else's only while hovered, or in crimson once picked out
-  // in the key. Written under the priest's feet, apart from its prayers over its head, and
-  // nudged downward until they stop colliding.
+  // in the key; on the livestream, everyone's. Written under the priest's feet, apart from
+  // its prayers over its head, and nudged downward until they stop colliding.
   const tagStyle = (p: PriestView): TagStyle | undefined =>
-    p.row.priestId === ownId ? 'own' : marked.has(p.row.priestId) && p.label ? 'marked' : p.row.priestId === hoveredPriest ? 'plain' : undefined;
+    stream
+      ? p.label
+        ? 'plain'
+        : undefined
+      : p.row.priestId === ownId
+        ? 'own'
+        : marked.has(p.row.priestId) && p.label
+          ? 'marked'
+          : p.row.priestId === hoveredPriest
+            ? 'plain'
+            : undefined;
   const tagOrder = (p: PriestView) => (p.row.priestId === ownId ? 0 : p.row.priestId === hoveredPriest ? 1 : 2);
   const placed: Rect[] = [];
   const tagPx = Math.round(textPx * 0.9);
@@ -605,12 +730,32 @@ function frame() {
 
   // --- the key: friends in the cathedral with you --------------------------------------
   const keyEntries: KeyEntry[] = priests
-    .filter((p) => p.label && p.row.priestId !== ownId)
+    .filter((p) => p.label && p.row.priestId !== ownId && !publicOnly.has(p.row.priestId))
     .map((p) => ({ id: p.row.priestId, name: p.label!, leaving: p.row.state.tag === 'Departing', marked: marked.has(p.row.priestId) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   // It stays while your priest leaves and after it has gone. (Not for a visitor without a link,
-  // who has no friends here, nor behind the close-up.)
-  if (spectator || openStand !== undefined) {
+  // who has no friends here, nor behind the close-up.) The livestream's lists everyone in the
+  // whole cathedral, as many as fit.
+  if (stream) {
+    const everyone: KeyEntry[] = [];
+    for (const p of conn.db.priest.iter()) {
+      const name = labels.get(p.priestId);
+      if (name) everyone.push({ id: p.priestId, name, leaving: p.state.tag === 'Departing', marked: false });
+    }
+    everyone.sort((a, b) => a.name.localeCompare(b.name));
+    const keyPx = Math.round(textPx * 0.85);
+    const { shown, more } = capKey(everyone, keyCapacity(display.height, keyPx));
+    drawKey(dctx, shown, keyPx, undefined, { emptyText: 'no one is praying', more });
+    keyPanel = undefined;
+    keyRows = [];
+    // Where to find it, for those watching.
+    const capPx = Math.round(textPx * 0.8);
+    dctx.save();
+    dctx.font = font(capPx, 600);
+    dctx.textBaseline = 'alphabetic';
+    plainText(dctx, `Indulgence · ${siteAddress(location)}`, Math.round(capPx * 0.9), display.height - Math.round(capPx * 0.8), capPx, DIM, 0.85);
+    dctx.restore();
+  } else if (spectator || openStand !== undefined) {
     keyPanel = undefined;
     keyRows = [];
   } else {
@@ -627,7 +772,7 @@ function frame() {
   // The title over the cathedral as you arrive: five seconds, then it fades.
   introAt ??= Date.now();
   const sinceIntro = Date.now() - introAt;
-  if (!spectator && !ending && sinceIntro < INTRO_HOLD_MS + INTRO_FADE_MS) {
+  if (!spectator && !stream && !ending && sinceIntro < INTRO_HOLD_MS + INTRO_FADE_MS) {
     titleOver(dctx, Math.min(1, 1 - (sinceIntro - INTRO_HOLD_MS) / INTRO_FADE_MS), TITLE, MOTTO, Date.now());
   }
   // And the dismissal as you leave, over the cathedral, which carries on behind it.
@@ -638,6 +783,14 @@ function frame() {
       phase = 'closed';
       clearGrant();
     }
+  }
+  // The livestream's old bay, fading out over the new one.
+  const fade = stream ? director.fade(Date.now()) : undefined;
+  if (fade !== undefined) {
+    dctx.save();
+    dctx.globalAlpha = fade;
+    dctx.drawImage(fadeStill, 0, 0);
+    dctx.restore();
   }
 }
 
@@ -677,13 +830,16 @@ function resize() {
   }
 }
 
+// The livestream takes no mouse: nothing is hovered, picked out or opened.
 display.addEventListener('mousemove', (e) => {
+  if (stream) return;
   const dpr = window.devicePixelRatio || 1;
   const r = display.getBoundingClientRect();
   mouse = { x: (e.clientX - r.left) * dpr, y: (e.clientY - r.top) * dpr };
 });
 display.addEventListener('mouseleave', () => (mouse = undefined));
 display.addEventListener('click', () => {
+  if (stream) return;
   if (openStand !== undefined) {
     const inside = mouse && standPanel && mouse.x >= standPanel.x && mouse.x <= standPanel.x + standPanel.w && mouse.y >= standPanel.y && mouse.y <= standPanel.y + standPanel.h;
     if (!inside) openStand = undefined;

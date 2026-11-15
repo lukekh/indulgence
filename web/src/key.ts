@@ -1,6 +1,7 @@
 // The key: a small panel at the top right listing your mutuals who are in the cathedral
 // with you. Clicking a name picks that priest out: a crimson outline round its figure and
-// its name written over its head in crimson, until it is clicked again.
+// its name written over its head in crimson, until it is clicked again. On the livestream it
+// lists everyone, as many as fit, and nothing is clickable.
 
 import { CRIMSON, DIM, WHITE, font, plainText, type Rect } from './text';
 
@@ -29,30 +30,54 @@ export function keyMetrics(displayW: number, px: number) {
   return { pad, margin, titlePx, rowH, top, right: displayW - margin, firstRow: top + pad + Math.round(titlePx * 1.7) };
 }
 
+/** How many rows fit on a display `displayH` high, leaving the bottom quarter clear. */
+export function keyCapacity(displayH: number, px: number): number {
+  const m = keyMetrics(0, px);
+  return Math.max(1, Math.floor((displayH * 0.75 - m.firstRow) / m.rowH));
+}
+
+/** The entries to list in `rows` rows: all of them, or all but one row and "and N more". */
+export function capKey<T>(entries: T[], rows: number): { shown: T[]; more: number } {
+  if (entries.length <= rows) return { shown: entries, more: 0 };
+  const shown = entries.slice(0, Math.max(0, rows - 1));
+  return { shown, more: entries.length - shown.length };
+}
+
 /** Middle of the i-th name's row: somewhere a click picks out that friend. */
 export function keyRowCentre(displayW: number, px: number, i: number): { x: number; y: number } {
   const m = keyMetrics(displayW, px);
   return { x: m.right - m.pad - px * 2, y: m.firstRow + i * m.rowH + m.rowH / 2 };
 }
 
-/** Draw the key; returns the whole panel and its clickable rows. */
-export function drawKey(ctx: CanvasRenderingContext2D, entries: KeyEntry[], px: number, hovered: bigint | undefined): { panel: Rect; rows: KeyRow[] } {
+/**
+ * Draw the key; returns the whole panel and its clickable rows. `emptyText` is written when
+ * there is no one to list, and `more`, if any, as a last row: "and 3 more".
+ */
+export function drawKey(
+  ctx: CanvasRenderingContext2D,
+  entries: KeyEntry[],
+  px: number,
+  hovered: bigint | undefined,
+  opts: { emptyText?: string; more?: number } = {},
+): { panel: Rect; rows: KeyRow[] } {
   const m = keyMetrics(ctx.canvas.width, px);
   const box = Math.max(5, Math.round(px * 0.42));
   const gap = Math.round(px * 0.55);
+  const emptyText = opts.emptyText ?? 'no friends here yet';
+  const more = opts.more ?? 0;
+  const moreText = `and ${more} more`;
   ctx.save();
   ctx.font = font(m.titlePx, 600);
   let inner = ctx.measureText(TITLE).width;
   ctx.font = font(px, 600);
   const labels = entries.map((e) => (e.leaving ? `${e.name} · leaving` : e.name));
   for (const l of labels) inner = Math.max(inner, box + gap + ctx.measureText(l).width);
-  const empty = entries.length === 0;
-  if (empty) {
-    ctx.font = font(px, 500);
-    inner = Math.max(inner, ctx.measureText('no friends here yet').width);
-  }
+  const empty = entries.length === 0 && more === 0;
+  ctx.font = font(px, 500);
+  if (empty) inner = Math.max(inner, ctx.measureText(emptyText).width);
+  if (more > 0) inner = Math.max(inner, box + gap + ctx.measureText(moreText).width);
   const w = Math.ceil(inner + m.pad * 2);
-  const h = m.firstRow - m.top + Math.max(1, entries.length) * m.rowH + Math.round(m.pad * 0.6);
+  const h = m.firstRow - m.top + Math.max(1, entries.length + (more > 0 ? 1 : 0)) * m.rowH + Math.round(m.pad * 0.6);
   const left = m.right - w;
 
   // A dark, thinly ruled panel.
@@ -75,7 +100,12 @@ export function drawKey(ctx: CanvasRenderingContext2D, entries: KeyEntry[], px: 
   const rows: KeyRow[] = [];
   if (empty) {
     ctx.font = font(px, 500);
-    plainText(ctx, 'no friends here yet', left + m.pad, m.firstRow + Math.round((m.rowH - px) / 2), px, DIM, 0.8);
+    plainText(ctx, emptyText, left + m.pad, m.firstRow + Math.round((m.rowH - px) / 2), px, DIM, 0.8);
+  }
+  if (more > 0) {
+    ctx.font = font(px, 500);
+    const y = m.firstRow + entries.length * m.rowH;
+    plainText(ctx, moreText, left + m.pad + box + gap, y + Math.round((m.rowH - px) / 2), px, DIM, 0.8);
   }
   entries.forEach((e, i) => {
     const y = m.firstRow + i * m.rowH;
