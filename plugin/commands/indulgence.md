@@ -33,3 +33,5 @@ Otherwise:
 
    Do not add to, summarise or rephrase anything. When the subagent replies `done: false`, launch a fresh `priest` subagent with the same two lines. Stop when it replies `done: true`.
 7. When finished, reply "Your votive is lit. Deo gratias." If you were told where the prayers of this session are being written, add a second line: "Prayers: <that path>". Nothing else.
+
+A session is finished only when a result has `done: true`, however long that takes. Until then, do not end your turn, to report progress or for any other reason: nothing is sent while you are not working, and after three minutes of silence the priest leaves. If the user asks you something along the way, answer in a line and carry on. Call `mcp__plugin_indulgence_indulgence__depart` only if the user asks you to stop praying; a session ends by itself when its budget is spent.

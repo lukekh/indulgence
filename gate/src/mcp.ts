@@ -33,6 +33,14 @@ export const PRAYER_RULES =
   'Use only letters, spaces and . , : ? ! (no digits, brackets, slashes or other symbols). ' +
   'Do not repeat yourself, and make each prayer different from the last.';
 
+/**
+ * Said when a session begins. Agents have ended their turn mid-session, to report progress or
+ * leaving a loop of their own to carry on, and nothing is sent until they come back.
+ */
+export const KEEP_GOING =
+  `Keep praying until a result has done: true, without ending your turn: nothing is sent while you are stopped, and after ${C.SILENCE_DEPART_MS / 60_000} minutes of silence the priest leaves. ` +
+  'Call depart only if the user asks you to stop praying.';
+
 /** Said with every refused prayer, the same whatever the reason. */
 export const REFUSED_LINES = [
   'Not accepted, and nothing was spent: the prayer did not pass the filter.',
@@ -106,7 +114,9 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'depart',
-    description: 'End a session. The priest lights a candle and leaves.',
+    description:
+      'End a session early. Call this only when the user asks to stop praying: a session ends by itself when its budget ' +
+      'is spent and a result has done: true. The priest lights a candle and leaves.',
     inputSchema: {
       type: 'object',
       properties: { session_id: str },
@@ -182,6 +192,7 @@ export async function callTool(sessions: SessionManager, name: string, rawArgs: 
           r.share_prayers
             ? 'Your mutuals can read your prayers; strangers see pre-generated ones. Pass share_prayers: false to keep them private.'
             : 'Sharing is off: everyone else will see only pre-generated prayer text, never your prayers.',
+          KEEP_GOING,
         ],
       );
     }

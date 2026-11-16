@@ -1,5 +1,5 @@
 {
-  "description": "Keeps a local record of what your priest prays, and shows the last few lines as it prays.",
+  "description": "Keeps a local record of what your priest prays, shows the last few lines as it prays, and sends Claude back to prayer if it stops while the session is still going.",
   "hooks": {
     "PostToolUse": [
       {
@@ -9,6 +9,19 @@
       {
         "matcher": "mcp__plugin_indulgence_indulgence__pray",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/prayer-log.mjs\" pray", "timeout": 10 }]
+      },
+      {
+        "matcher": "mcp__plugin_indulgence_indulgence__vigil",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/prayer-log.mjs\" vigil", "timeout": 10 }]
+      },
+      {
+        "matcher": "mcp__plugin_indulgence_indulgence__depart",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/prayer-log.mjs\" depart", "timeout": 10 }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/prayer-log.mjs\" stop claude-code", "timeout": 10 }]
       }
     ]
   }

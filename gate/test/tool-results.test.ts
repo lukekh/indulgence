@@ -1,7 +1,7 @@
 // Acceptance: no tool result contains any user-written text (property test over all tools).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { callTool, TOOLS, ERROR_TEXT, PRAYER_RULES, REFUSED_LINES } from '../src/mcp.js';
+import { callTool, TOOLS, ERROR_TEXT, KEEP_GOING, PRAYER_RULES, REFUSED_LINES } from '../src/mcp.js';
 import { SessionManager, type Sampler } from '../src/sessions.js';
 import { FakeStore, LATIN_PRAYERS } from './fakes.js';
 
@@ -89,6 +89,20 @@ describe('a refused prayer', () => {
     const pray = TOOLS.find((t) => t.name === 'pray')!;
     expect(pray.description).toContain(PRAYER_RULES);
     expect(pray.description).toContain('Stop only when done is true');
+  });
+});
+
+describe('an agent', () => {
+  it('is told when it begins to keep praying until done, and to depart only when the user asks', async () => {
+    const store = new FakeStore();
+    store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: '', mutualHashes: [], labelMode: 'Username' });
+    const sessions = new SessionManager(store, 'https://site.test');
+    const begun = await callTool(sessions, 'begin', { intention: 'pro anima mea' }, { account: alice, signal: new AbortController().signal });
+    const text = (begun.content[0] as { text: string }).text;
+    expect(text).toContain(KEEP_GOING);
+    expect(KEEP_GOING).toContain('without ending your turn');
+    expect(KEEP_GOING).toContain('3 minutes of silence');
+    expect(TOOLS.find((t) => t.name === 'depart')!.description).toContain('only when the user asks to stop praying');
   });
 });
 

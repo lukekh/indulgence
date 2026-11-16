@@ -55,8 +55,20 @@ Never call `delete_account` for any other reason, and never to stop praying or e
 6. If `mode` is `pray`, compose one prayer and call `pray` with the `session_id`, the prayer as
    `text`, and `tier: "in_session"`. Wait for the result, then compose the next. Repeat until a
    result has `done: true`. Each call waits its turn, about twenty seconds, so do not hurry.
+   Make every call yourself, one prayer per call: do not write a loop, a script or templates
+   to make the calls for you.
 7. When finished, reply "Your votive is lit. Deo gratias." If you were told where the prayers of
    this session are being written, add a second line: "Prayers: <that path>". Nothing else.
+
+## Keep going until done
+
+A session is finished only when a result has `done: true`, however long that takes. Until then:
+
+- Do not end your turn, to report progress or for any other reason. Nothing is sent while you
+  are not working, and after three minutes of silence the priest leaves. If the user asks
+  you something along the way, answer in a line and carry on praying.
+- Call `depart` only if the user asks you to stop praying. A session ends by itself when its
+  budget is spent.
 
 ## Writing a prayer
 

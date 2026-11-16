@@ -149,3 +149,112 @@ describe('prayer log', () => {
     });
   });
 });
+
+describe('keeping the agent at prayer', () => {
+  // Hook input carries the agent's conversation as session_id; the gate's session is in the tool's.
+  const conv = 'conv-stop-1';
+  const t0 = Date.now();
+  const opts = (s) => ({ dir, now: new Date(t0 + s * 1000) });
+  const begin = (s, sessionId, mode = 'pray') =>
+    log.onBegin({ session_id: conv, tool_input: { intention: 'pro anima mea' }, tool_response: result({ session_id: sessionId, url: 'https://example/v#t', mode, budget_tokens: 5000 }) }, opts(s));
+  const pray = (s, sessionId, done = false, accepted = true) =>
+    log.onPray({ session_id: conv, tool_input: { session_id: sessionId, text: 'Kyrie eleison.', tier: 'in_session' }, tool_response: result({ done, accepted, left: 100 }) }, opts(s));
+  const stop = (s, who = 'codex', conversation = conv) => log.onStop({ session_id: conversation, stop_hook_active: false }, who, opts(s));
+  const liveFile = () => path.join(dir, 'live', `${conv}.json`);
+
+  it('sends the agent back while its session is live, and says how to carry on', () => {
+    begin(0, 'liveLIVE-0001');
+    const first = stop(5);
+    expect(first.decision).toBe('block');
+    expect(first.reason).toContain('compose the next prayer and call pray with session_id liveLIVE-0001');
+    expect(first.reason).toContain('wait on it instead');
+    expect(first.reason).toContain('3 minutes of silence');
+    expect(first.reason).toContain('call depart');
+    const claude = stop(6, 'claude-code');
+    expect(claude.reason).toContain('launch a fresh priest subagent');
+    expect(claude.reason).not.toContain('script');
+    // Sent back at most three times without a new result: an agent that will not go on is let go.
+    expect(log.MAX_PUSHES).toBe(3);
+    expect(stop(7).decision).toBe('block');
+    expect(stop(8)).toBeUndefined();
+    // A new result, even a refusal, means it went on.
+    pray(30, 'liveLIVE-0001', false, false);
+    expect(stop(31).decision).toBe('block');
+    // Nothing but the session, when, and whether it is done: no prayer text.
+    expect(fs.readFileSync(liveFile(), 'utf8')).not.toContain('Kyrie');
+  });
+
+  it('lets the agent stop once its session is done, departed or long silent', () => {
+    pray(40, 'liveLIVE-0001', true);
+    expect(stop(41)).toBeUndefined();
+    expect(fs.existsSync(liveFile())).toBe(false);
+
+    begin(50, 'liveLIVE-0002');
+    log.onDepart({ session_id: conv, tool_input: { session_id: 'liveLIVE-0002' }, tool_response: result({ ok: true }) }, opts(55));
+    expect(stop(56)).toBeUndefined();
+
+    begin(60, 'liveLIVE-0003');
+    expect(stop(60 + 179).decision).toBe('block');
+    expect(stop(60 + 181)).toBeUndefined();
+  });
+
+  it('never sends back another conversation, or a Codex agent after Esc until it prays again', () => {
+    begin(100, 'liveLIVE-0004');
+    expect(stop(101, 'codex', 'conv-elsewhere')).toBeUndefined();
+    expect(log.onStop({}, 'codex', opts(101))).toBeUndefined();
+    log.onInterrupt({ session_id: conv }, opts(102));
+    expect(stop(103)).toBeUndefined();
+    pray(120, 'liveLIVE-0004');
+    expect(stop(121).decision).toBe('block');
+  });
+
+  it('goes on with vigil in sampling mode, and ignores results for another session', () => {
+    begin(200, 'sampSAMP-0005', 'sampling');
+    expect(stop(201).reason).toContain('call vigil again with session_id sampSAMP-0005');
+    // An old session's last result does not end the live one.
+    pray(205, 'liveLIVE-0004', true);
+    expect(stop(206).decision).toBe('block');
+    // The gate fell back from sampling to pray.
+    log.onVigil({ session_id: conv, tool_input: { session_id: 'sampSAMP-0005' }, tool_response: result({ done: false, mode: 'pray', prayers: 0, spent: 0, left: 5000 }) }, opts(210));
+    expect(stop(211).reason).toContain('call pray with session_id sampSAMP-0005');
+  });
+
+  it('clears away what conversations long gone left behind', () => {
+    const old = path.join(dir, 'live', 'conv-long-gone.json');
+    fs.writeFileSync(old, JSON.stringify({ session: 'goneGONE-1', at: t0, done: false, next: 'pray', pushes: 0 }));
+    fs.utimesSync(old, new Date(t0 - 25 * 3600_000), new Date(t0 - 25 * 3600_000));
+    stop(300, 'codex', 'conv-anyone');
+    expect(fs.existsSync(old)).toBe(false);
+    expect(fs.existsSync(liveFile())).toBe(true);
+  });
+
+  it('counts a session live for as long as the gate waits for a silent priest', () => {
+    const constants = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../shared/constants.json'), 'utf8'));
+    expect(log.LIVE_FOR_MS).toBe(constants.SILENCE_DEPART_MS);
+  });
+
+  it('answers Stop the way Claude Code and Codex expect, and never fails', () => {
+    const script = path.resolve(import.meta.dirname, '../../plugin/scripts/prayer-log.mjs');
+    const run = (args, input) => spawnSync(process.execPath, [script, ...args], { input, env: { ...process.env, INDULGENCE_LOG_DIR: dir } });
+    log.noted({ conversation: 'conv-cli', sessionId: 'cliCLI-01', done: false, next: 'pray', fresh: true }, { dir });
+    const r = run(['stop', 'codex'], JSON.stringify({ session_id: 'conv-cli', hook_event_name: 'Stop', stop_hook_active: false }));
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout.toString())).toEqual({ decision: 'block', reason: expect.stringContaining('cliCLI-01') });
+    for (const [args, input] of [[['stop', 'claude-code'], ''], [['stop'], 'not json'], [['interrupt'], '{}'], [['vigil'], '{"session_id":"x"}'], [['depart'], '']]) {
+      const q = run(args, input);
+      expect(q.status).toBe(0);
+      expect(q.stdout.toString()).toBe('');
+    }
+  });
+
+  it('is wired to every gate tool, and to Stop, in the Claude Code and Codex plugins', () => {
+    const root = path.resolve(import.meta.dirname, '../..');
+    const commands = (file, event) =>
+      (JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')).hooks[event] ?? []).flatMap((g) => g.hooks.map((h) => h.command.replace(/^.*prayer-log\.mjs" /, '')));
+    expect(commands('plugin/hooks/hooks.json', 'PostToolUse')).toEqual(['begin', 'pray', 'vigil', 'depart']);
+    expect(commands('plugin/hooks/hooks.json', 'Stop')).toEqual(['stop claude-code']);
+    expect(commands('codex-plugin/hooks/hooks.json', 'PostToolUse')).toEqual(['begin', 'pray', 'vigil', 'depart']);
+    expect(commands('codex-plugin/hooks/hooks.json', 'Stop')).toEqual(['stop codex']);
+    expect(commands('codex-plugin/hooks/hooks.json', 'Interrupt')).toEqual(['interrupt']);
+  });
+});
