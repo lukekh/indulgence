@@ -1,7 +1,8 @@
 // The remote MCP server: five tools, no resources.
 //
 // Every tool result is a fixed template filled with numbers, ids and the viewer URL. No
-// result contains prayer text, intentions, names, argument values or rejection reasons.
+// result contains prayer text, intentions, names, argument values or rejection reasons: a
+// refused prayer gets the same advice whatever the reason, so the filter cannot be probed.
 // Arguments are validated by hand (not by a schema library) so validation errors cannot
 // echo input back to the model.
 
@@ -24,6 +25,29 @@ const AVG_PRAYER_TOKENS = 200;
 const bool = { type: 'boolean' } as const;
 const int = { type: 'integer' } as const;
 const str = { type: 'string' } as const;
+
+/** What a prayer must be to pass the filter (safety/), told to every client up front. */
+export const PRAYER_RULES =
+  'Write Latin only: a prayer is refused if fewer than 4 in 10 of its words are Latin words found in the Vulgate, so keep modern words few. ' +
+  'Names of people in the intention, capitalised as they are there, are not counted against you. ' +
+  `At most ${C.PRAYER_MAX_CHARS} characters, about ${C.PRAYER_MAX_WORDS} words. ` +
+  'Use only letters, spaces and . , ; : ? ! (no digits, brackets, slashes or other symbols). ' +
+  'Do not repeat yourself, and make each prayer different from the last.';
+
+/**
+ * Said when a session begins. Agents have ended their turn mid-session, to report progress or
+ * leaving a loop of their own to carry on, and nothing is sent until they come back.
+ */
+export const KEEP_GOING =
+  `Keep praying until a result has done: true, without ending your turn: nothing is sent while you are stopped, and after ${C.SILENCE_DEPART_MS / 60_000} minutes of silence the priest leaves. ` +
+  'Call depart only if the user asks you to stop praying.';
+
+/** Said with every refused prayer, the same whatever the reason. */
+export const REFUSED_LINES = [
+  'Not accepted, and nothing was spent: the prayer did not pass the filter.',
+  `Write a plainer prayer and call pray again. ${PRAYER_RULES}`,
+  `Send one pray call at a time and wait for each result. The session stays open; it ends after ${C.MAX_CONSECUTIVE_REJECTS} refusals in a row.`,
+];
 
 export const TOOLS: Tool[] = [
   {
@@ -69,8 +93,10 @@ export const TOOLS: Tool[] = [
   {
     name: 'pray',
     description:
-      `Submit one Latin prayer (at most ${C.PRAYER_MAX_CHARS} characters) for a session. ` +
-      'tier: "subagent" or "in_session". Returns done, accepted and left.',
+      `Submit one Latin prayer for a session. ${PRAYER_RULES} ` +
+      'tier: "subagent" or "in_session". Send one call at a time: each waits its turn, about twenty seconds. ' +
+      'Returns done, accepted and left. accepted: false means the prayer was refused and nothing was spent: ' +
+      'write a plainer one and call again. Stop only when done is true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -89,7 +115,9 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'depart',
-    description: 'End a session. The priest lights a candle and leaves.',
+    description:
+      'End a session early. Call this only when the user asks to stop praying: a session ends by itself when its budget ' +
+      'is spent and a result has done: true. The priest lights a candle and leaves.',
     inputSchema: {
       type: 'object',
       properties: { session_id: str },
@@ -165,6 +193,7 @@ export async function callTool(sessions: SessionManager, name: string, rawArgs: 
           r.share_prayers
             ? 'Your mutuals, and the public livestream, can read your prayers; strangers see pre-generated ones. Pass share_prayers: false to keep them private.'
             : 'Sharing is off: everyone else, the livestream included, will see only pre-generated prayer text, never your prayers.',
+          KEEP_GOING,
         ],
       );
     }
@@ -176,7 +205,9 @@ export async function callTool(sessions: SessionManager, name: string, rawArgs: 
     case 'pray': {
       const r = await sessions.pray(account, args, { signal: ctx.signal });
       if ('error' in r) return fail(r.error);
-      return ok({ done: r.done, accepted: r.accepted, left: r.left });
+      const result = { done: r.done, accepted: r.accepted, left: r.left };
+      // A refusal says what to do next, so an agent carries on instead of stopping.
+      return ok(result, !r.accepted && !r.done ? REFUSED_LINES : undefined);
     }
     case 'depart': {
       await sessions.depart(account, args);

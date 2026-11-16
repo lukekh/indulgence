@@ -32,6 +32,8 @@ const oauth = new GateOAuthProvider({
   allowedRedirectOrigins: cfg.allowedRedirectOrigins,
 });
 sessions.onForgotten = (ghHash) => oauth.markForgotten(ghHash);
+// Why prayers are refused, for `fly logs`: the reason only, never the text or the account.
+sessions.onRefused = (reason) => console.log(`[pray] refused: ${reason}`);
 sessions.gateUrl = cfg.publicUrl;
 
 const { app, closeIdleTransports } = createApp({

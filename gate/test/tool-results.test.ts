@@ -1,7 +1,7 @@
 // Acceptance: no tool result contains any user-written text (property test over all tools).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { callTool, TOOLS, ERROR_TEXT } from '../src/mcp.js';
+import { callTool, TOOLS, ERROR_TEXT, KEEP_GOING, PRAYER_RULES, REFUSED_LINES } from '../src/mcp.js';
 import { SessionManager, type Sampler } from '../src/sessions.js';
 import { FakeStore, LATIN_PRAYERS } from './fakes.js';
 
@@ -58,6 +58,53 @@ async function settle<T>(p: Promise<T>): Promise<T> {
   if (!done) throw new Error('did not settle');
   return v;
 }
+
+describe('a refused prayer', () => {
+  it('gets the same advice whatever the reason, so the agent carries on, and the log gets only the reason', async () => {
+    const store = new FakeStore();
+    store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: '', mutualHashes: [], networkChecks: [], public: false, labelMode: 'Username' });
+    const sessions = new SessionManager(store, 'https://site.test');
+    const refused: string[] = [];
+    sessions.onRefused = (reason) => refused.push(reason);
+    const ctx = { account: alice, signal: new AbortController().signal };
+    const begun = await callTool(sessions, 'begin', { intention: 'pro anima mea', budget_tokens: 1000 }, ctx);
+    const session_id = (begun.structuredContent as { session_id: string }).session_id;
+    const pray = (text: string) => settle(callTool(sessions, 'pray', { session_id, text, tier: 'in_session' }, ctx));
+
+    const english = await pray('Please save my soul and the souls of everyone I know, forever and ever.');
+    const leaky = await pray(`${LATIN_PRAYERS[0]} 1234567`);
+    for (const res of [english, leaky]) {
+      expect(res.structuredContent).toEqual({ done: false, accepted: false, left: 1000 });
+      expect((res.content[0] as { text: string }).text).toBe(`${REFUSED_LINES.join('\n')}\n${JSON.stringify(res.structuredContent)}`);
+    }
+    expect(REFUSED_LINES.join(' ')).toContain('call pray again');
+    expect(refused).toEqual(['not_latin', 'leak_shaped']);
+
+    const accepted = await pray(LATIN_PRAYERS[1]!);
+    expect((accepted.structuredContent as { accepted: boolean }).accepted).toBe(true);
+    expect((accepted.content[0] as { text: string }).text).toBe(JSON.stringify(accepted.structuredContent));
+  });
+
+  it('is described, rules and all, before any prayer is sent', () => {
+    const pray = TOOLS.find((t) => t.name === 'pray')!;
+    expect(pray.description).toContain(PRAYER_RULES);
+    expect(pray.description).toContain('Stop only when done is true');
+  });
+});
+
+describe('an agent', () => {
+  it('is told when it begins to keep praying until done, and to depart only when the user asks', async () => {
+    const store = new FakeStore();
+    store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: '', mutualHashes: [], networkChecks: [], public: false, labelMode: 'Username' });
+    const sessions = new SessionManager(store, 'https://site.test');
+    const begun = await callTool(sessions, 'begin', { intention: 'pro anima mea' }, { account: alice, signal: new AbortController().signal });
+    const text = (begun.content[0] as { text: string }).text;
+    expect(text).toContain(KEEP_GOING);
+    expect(KEEP_GOING).toContain('without ending your turn');
+    expect(KEEP_GOING).toContain('3 minutes of silence');
+    expect(TOOLS.find((t) => t.name === 'depart')!.description).toContain('only when the user asks to stop praying');
+  });
+});
 
 describe('tool results', () => {
   it('never contain user-written text, for any tool and any arguments', async () => {

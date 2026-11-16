@@ -20,8 +20,10 @@ export function cleanText(input: string): string {
 }
 
 /**
- * Fold a word for dictionary lookup: lower case, strip diacritics, æ→ae, œ→oe,
- * j→i, v→u (classical and ecclesiastical spellings vary).
+ * Fold a word for dictionary lookup: lower case, strip diacritics, æ→ae, œ and oe→ae,
+ * j→i, v→u (classical and ecclesiastical spellings vary). oe and ae are folded together
+ * because the Clementine Vulgate writes poenitentia and coelum where church Latin today
+ * writes paenitentia and caelum.
  */
 export function foldLatin(word: string): string {
   return word
@@ -29,7 +31,7 @@ export function foldLatin(word: string): string {
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .replace(/æ/g, 'ae')
-    .replace(/œ/g, 'oe')
+    .replace(/œ|oe/g, 'ae')
     .replace(/j/g, 'i')
     .replace(/v/g, 'u');
 }

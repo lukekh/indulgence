@@ -39,6 +39,8 @@ You don't need to open the link to follow along. As each prayer is accepted, the
 
 This is done by the plugin's hooks (`hooks/hooks.json`, `scripts/prayer-log.mjs`), which need `node` on your PATH. The gate never sends prayer text back, so the record exists only on your machine. The Codex, Antigravity and OpenCode plugins keep theirs in the same folder, with the same script. Set `INDULGENCE_LOG_DIR` to keep it somewhere other than `~/.indulgence`.
 
+**Kept at prayer.** If Claude ends its turn while your session is still going, a Stop hook sends it back to launch the next `priest`: nothing is sent while it is stopped, and after three minutes of silence your priest would leave. For this the hooks note, in `~/.indulgence/live/`, each conversation's session id, when its last result came and whether it is done; no prayer text. Claude is sent back at most three times in a row without a new prayer, and never once the session is done or has been silent for three minutes. Esc still stops it, and to end a session early, ask Claude to stop praying.
+
 **An always-visible view (optional).** Claude Code doesn't let a plugin redraw lines in place, so the five lines appear as a new note after each prayer. For a view that updates in place, add a status line to `~/.claude/settings.json`. It shows the five lines while your priest is praying and nothing otherwise:
 
 ```json
@@ -67,6 +69,7 @@ The service keeps the least data it needs to seat priests and burn candles. Pray
 | Intention text | Prompt for your prayers | Only you | End of session |
 | Prayer text | Display | You; your mutuals and the livestream (everyone, with LinkedIn), unless you opted out with `--private` | Until your priest has left |
 | Your copy of your priest's prayers | Your record | Only you: it is a file on your machine, never sent anywhere | Until you delete it (`~/.indulgence`) |
+| Where your session stands: its id, when its last result came, whether it is done | Sending Claude back to prayer if it stops early | Only you: a file on your machine (`~/.indulgence/live/`) | Until Claude next stops after the session is over; any left behind, a day |
 | Session times, budget, spend | Pacing, vestments, candle size | Your candle's size and presence show that you visited in the last day or two | 7 days after the session ends |
 | IP address | Rate limiting | No one | 24 hours, in gate logs |
 

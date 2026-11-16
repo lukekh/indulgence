@@ -89,7 +89,8 @@ const LEAK_PATTERNS: [string, RegExp][] = [
   ['path_separator', /[/\\]/],
   ['at_sign', /@/],
   ['brackets', /[{}[\]()<>]/],
-  ['equals_or_semicolon', /[=;]/],
+  // Not the semicolon: Latin collects are full of them, and code is caught by everything else.
+  ['equals', /=/],
   // Code-ish punctuation that never appears in a Latin prayer.
   ['code_punctuation', /[`|$#*^~]/],
   // A dot directly between word characters: file.ts, example.com, v1.2.
@@ -104,13 +105,48 @@ export function leakShaped(text: string): string | null {
   return null;
 }
 
-/** Share of words found in the bundled Latin wordlist (0 for text with no words). */
-export function latinRatio(text: string): number {
+/**
+ * The names in an intention: its capitalised words, folded, but not a word that starts it or
+ * starts a sentence, which may be capitalised for that alone ("Pray for Elon Musk" gives
+ * elon and musk).
+ */
+export function namesIn(intention: string): Set<string> {
+  const names = new Set<string>();
+  const text = cleanText(intention);
+  for (const m of text.matchAll(/\p{L}+/gu)) {
+    if (!/^\p{Lu}/u.test(m[0])) continue;
+    const before = text.slice(0, m.index).trimEnd();
+    if (before === '' || /[.!?]$/.test(before)) continue;
+    names.add(foldLatin(m[0]));
+  }
+  return names;
+}
+
+/** A word of a prayer that is one of the names: capitalised, as written or with a Latin ending (Elonem). */
+function isName(word: string, names: ReadonlySet<string>): boolean {
+  if (!/^\p{Lu}/u.test(word)) return false;
+  const f = foldLatin(word);
+  if (names.has(f)) return true;
+  for (let cut = 1; cut <= NAME_ENDING_MAX && f.length - cut >= 3; cut++) if (names.has(f.slice(0, -cut))) return true;
+  return false;
+}
+
+/**
+ * Share of words found in the bundled wordlist (0 for text with no words). The intention's
+ * names, up to a third of the words, are left out of the count: they neither help nor hurt,
+ * and the rest must be Latin enough on its own. A title-case copy of the intention is still
+ * refused, since past that third its words count as what they are.
+ */
+export function latinRatio(text: string, names: ReadonlySet<string> = new Set()): number {
   const ws = words(text);
   if (ws.length === 0) return 0;
   let known = 0;
-  for (const w of ws) if (LATIN.has(foldLatin(w))) known++;
-  return known / ws.length;
+  let named = 0;
+  for (const w of ws) {
+    if (LATIN.has(foldLatin(w))) known++;
+    else if (names.size > 0 && isName(w, names)) named++;
+  }
+  return known / (ws.length - Math.min(named, Math.floor(ws.length * NAME_SHARE_MAX)));
 }
 
 export function denied(text: string): boolean {
@@ -134,11 +170,23 @@ export function compressionRatio(text: string): number {
   return gzipSync(Buffer.from(text, 'utf8')).length / raw;
 }
 
-export const LATIN_MIN_RATIO = 0.6;
+/**
+ * At least 40% of the words must be Latin. Forgiving on purpose: a prayer may name people,
+ * and use church or modern words the Vulgate lacks. English prose scores 0.1 or so against
+ * the list; a few short fragments full of words that are Latin too (a, per, at) reach 0.4.
+ */
+export const LATIN_MIN_RATIO = 0.4;
+/** Names from the intention are left out of the count for at most this share of a prayer's words. */
+export const NAME_SHARE_MAX = 1 / 3;
+/** Letters of a Latin ending a name may carry: Elon, Elonem; Jeff, Ieffum. */
+const NAME_ENDING_MAX = 3;
 export const PADDING_MAX_RATIO = 0.25;
 
-/** Full check for a prayer that may be shown to mutuals. Returns the cleaned text. */
-export function checkPrayer(raw: unknown): Verdict {
+/**
+ * Full check for a prayer that may be shown to mutuals. Returns the cleaned text. The
+ * intention, if given, lends its names: a prayer for Elon Musk may say so.
+ */
+export function checkPrayer(raw: unknown, intention = ''): Verdict {
   if (typeof raw !== 'string') return { ok: false, reason: 'empty' };
   if (raw.length > C.PRAYER_MAX_CHARS * 4) return { ok: false, reason: 'too_long' };
   const text = cleanText(raw);
@@ -146,7 +194,7 @@ export function checkPrayer(raw: unknown): Verdict {
   if ([...text].length > C.PRAYER_MAX_CHARS) return { ok: false, reason: 'too_long' };
   if (leakShaped(text)) return { ok: false, reason: 'leak_shaped' };
   if (denied(text)) return { ok: false, reason: 'denylist' };
-  if (latinRatio(text) < LATIN_MIN_RATIO) return { ok: false, reason: 'not_latin' };
+  if (latinRatio(text, namesIn(intention)) < LATIN_MIN_RATIO) return { ok: false, reason: 'not_latin' };
   if (compressionRatio(text) < PADDING_MAX_RATIO) return { ok: false, reason: 'padding' };
   return { ok: true, text };
 }

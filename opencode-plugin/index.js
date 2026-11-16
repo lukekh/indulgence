@@ -40,14 +40,20 @@ Otherwise:
 3. If begin returns an error, show its text to the user and stop.
 4. Print the returned \`url\` so the user can watch their priest. If \`share_prayers\` is \`false\`, also print: "Sharing is off: everyone else will see only pre-generated prayer text, never your prayers."
 5. If \`mode\` is \`sampling\`, call vigil with the \`session_id\`, again and again, until a result has \`done: true\` (go to step 7) or \`mode: "pray"\` (go to step 6).
-6. If \`mode\` is \`pray\`, compose one prayer and call pray with the \`session_id\`, the prayer as \`text\`, and \`tier: "in_session"\`. Wait for the result, then compose the next. Repeat until a result has \`done: true\`. Each call waits its turn, about twenty seconds, so do not hurry.
+6. If \`mode\` is \`pray\`, compose one prayer and call pray with the \`session_id\`, the prayer as \`text\`, and \`tier: "in_session"\`. Wait for the result, then compose the next. Repeat until a result has \`done: true\`. Each call waits its turn, about twenty seconds, so do not hurry. Make every call yourself, one prayer per call: do not write a loop, a script or templates to make the calls for you.
 7. When finished, reply "Your votive is lit. Deo gratias." and nothing else.
+
+Keep going until done. A session is finished only when a result has \`done: true\`, however long that takes. Until then:
+
+- Do not end your turn, to report progress or for any other reason. Nothing is sent while you are not working, and after three minutes of silence the priest leaves. If the user asks you something along the way, answer in a line and carry on praying.
+- Call depart only if the user asks you to stop praying. A session ends by itself when its budget is spent.
 
 Writing a prayer: you are a priest in a medieval cathedral. Compose each prayer in the style of medieval Latin liturgy (a collect, a litany, or versicles and responses) for the soul named in the intention.
 
 - Use only the intention. Mention no code, files, projects, tools, people or places from anywhere else in this session. Other people may read these prayers.
 - Write Latin only, at most 120 words per prayer.
-- Use only letters, spaces, commas, full stops, colons, question marks and exclamation marks. No digits, brackets, semicolons or other symbols.
+- Use only letters, spaces, commas, semicolons, full stops, colons, question marks and exclamation marks. No digits, brackets or other symbols.
+- Names of people in the intention may be written as they are there, capitalised.
 - Make each prayer different from the last.
 - If a result has \`accepted: false\`, the prayer was refused: write a plainer one and go on.
 `;

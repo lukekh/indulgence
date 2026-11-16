@@ -67,7 +67,7 @@ export const PRIEST_SYSTEM_PROMPT = [
   'Compose one prayer in the style of medieval Latin liturgy (a collect, a litany, or versicles and responses) for the soul named in the intention.',
   'Use only the intention. Mention no code, files, projects, tools, people or places from anywhere else.',
   `Write Latin only, at most ${C.PRAYER_MAX_WORDS} words.`,
-  'Use only letters, spaces, commas, full stops, colons, question marks and exclamation marks. No digits, brackets, semicolons or other symbols.',
+  'Use only letters, spaces, commas, semicolons, full stops, colons, question marks and exclamation marks. No digits, brackets or other symbols.',
   'Reply with the prayer and nothing else.',
 ].join('\n');
 
@@ -129,6 +129,11 @@ export class SessionManager {
   readonly rejectCounts = new Map<RejectReason, number>();
   /** Called after an account is deleted (the OAuth layer then refuses its old tokens). */
   onForgotten?: (ghHash: string) => void;
+  /**
+   * Called when a prayer is refused, with only the reason ('busy': too many calls waiting
+   * for one session). For the operator's logs; never the text, nor whose it was.
+   */
+  onRefused?: (reason: RejectReason | 'busy') => void;
   /** One-time links that confirm an account's deletion, by their token. */
   private deletions = new Map<string, { ghHash: string; expires: number }>();
   /** The gate's own public address, where the confirmation page lives. */
@@ -246,7 +251,7 @@ export class SessionManager {
         await this.sleepUntil(s.lastAcceptAt + SLOT, ctx.signal);
         if (ctx.signal.aborted || s.ended) return { done: s.ended, accepted: false, left: left(s) };
 
-        const verdict = checkPrayer(args.text);
+        const verdict = checkPrayer(args.text, s.intention);
         if (!verdict.ok) {
           await this.reject(s, verdict.reason);
           if (!s.ended) await this.sleepUntil(this.clock.now() + REJECT_HOLD_MS, ctx.signal);
@@ -258,6 +263,8 @@ export class SessionManager {
         if (done) await this.end(s);
         return { done, accepted: true, left: left(s) };
       });
+      // No result: more calls were waiting for this session than it queues.
+      if (!r) this.onRefused?.('busy');
       return r ?? { done: false, accepted: false, left: left(s) };
     });
   }
@@ -305,7 +312,7 @@ export class SessionManager {
           failures = 0;
           await this.sleepUntil(s.lastAcceptAt + SLOT, ctx.signal);
           if (ctx.signal.aborted || s.ended) break;
-          const verdict = checkPrayer(text);
+          const verdict = checkPrayer(text, s.intention);
           if (!verdict.ok) {
             await this.reject(s, verdict.reason);
             await this.sleepUntil(this.clock.now() + REJECT_HOLD_MS, ctx.signal);
@@ -559,6 +566,7 @@ export class SessionManager {
 
   private async reject(s: LiveSession, reason: RejectReason) {
     this.rejectCounts.set(reason, (this.rejectCounts.get(reason) ?? 0) + 1);
+    this.onRefused?.(reason);
     s.rejects++;
     if (s.rejects >= C.MAX_CONSECUTIVE_REJECTS) await this.end(s);
   }

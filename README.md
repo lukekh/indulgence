@@ -31,7 +31,7 @@ With the plugin:
 
 The first run opens your browser, shows a page naming the application that is asking for access (Claude Code, receiving it on this computer), and signs you in with GitHub. Then you choose whether your candle shows your GitHub username or your full name.
 
-The plugin gives you the `/indulgence` command, a `priest` subagent that writes the prayers, and hooks that keep a local log of them. See [`plugin/README.md`](plugin/README.md).
+The plugin gives you the `/indulgence` command, a `priest` subagent that writes the prayers, and hooks that keep a local log of them and keep Claude praying until the session is done. See [`plugin/README.md`](plugin/README.md).
 
 ### Codex
 
@@ -43,7 +43,7 @@ codex plugin add indulgence@indulgence
 codex mcp login indulgence
 ```
 
-Then, in Codex, ask it to "use indulgence to pray for my immortal soul". Codex has no `priest` subagent, so the model that writes the prayers can see your session; read [Sharing](#sharing-your-prayers). Like every plugin here, it keeps a record of the prayers the gate accepts in `~/.indulgence/prayers/`, through a hook that needs `node` on your PATH. The next time Codex starts it says the plugin's hooks need review: trust them, or the record isn't kept.
+Then, in Codex, ask it to "use indulgence to pray for my immortal soul". Codex has no `priest` subagent, so the model that writes the prayers can see your session; read [Sharing](#sharing-your-prayers). Like every plugin here, it keeps a record of the prayers the gate accepts in `~/.indulgence/prayers/`, through a hook that needs `node` on your PATH. Another hook sends Codex back to prayer if it ends its turn while the session is still going: nothing is sent while it is stopped, so after three minutes the priest would leave. Esc still stops it. The next time Codex starts it says the plugin's hooks need review: trust them, or neither hook runs.
 
 ### Antigravity
 
@@ -109,7 +109,7 @@ You don't need to open the link to follow along. After each accepted prayer the 
 | `begin` | `intention` (your words, up to 500 characters), `budget_tokens` (optional), `share_prayers` (optional, default `true`) | `session_id`, `url`, `mode`, `budget_tokens`, `share_prayers` | Starts a session and seats your priest. `url` is a link to the viewer that works until your priest has left. `share_prayers: false` opts out of sharing |
 | `pray` | `session_id`, `text` (Latin, at most 120 words), `tier` | `accepted`, `done`, `left` | Submits one prayer. Rejected prayers are not charged |
 | `vigil` | `session_id` | `done`, `mode`, `prayers`, `spent`, `left` | Sampling clients only: waits up to 5 minutes while the gate asks your client for prayers |
-| `depart` | `session_id` | `ok` | Ends the session early. Your priest lights a candle and leaves |
+| `depart` | `session_id` | `ok` | Ends the session early, when you ask to stop. Your priest lights a candle and leaves |
 | `delete_account` | none | `url`, `deleted` | Deletes nothing itself: returns a one-time link where you confirm. Confirming deletes your account, follow edges and sessions; lit candles keep burning |
 
 Prayers are paced at one every 20 seconds. `done: true` comes back on the call that uses up the budget. Prayers that look like they leak anything (paths, URLs, code-shaped words, long numbers) are rejected, and after 10 rejections in a row the session ends.
@@ -173,14 +173,14 @@ To opt out, use `/indulgence --private` (or pass `share_prayers: false` to `begi
 - **Google, Microsoft, LinkedIn: `openid profile`.** Your name and an ID, plus Google's Workspace domain or Microsoft's organisation, read from the signed ID token. No email address, and no access token is kept or used.
 - **Discord: `identify guilds`.** Your username and the servers you are in, read once and then the **access token is revoked**.
 - **Claude Code: five tools, nothing else.** `/indulgence` pre-approves only the plugin's five MCP tools, and its instructions forbid reading files, running commands or calling any other tool. The `priest` subagent that writes the prayers is held to a single tool, `pray`, by its definition, and does not see your CLAUDE.md or your conversation.
-- **A local hook.** The plugin runs one small, dependency-free Node script after `begin` and `pray` to write the prayer log (the Codex and Antigravity plugins run the same script, and the OpenCode plugin imports it). It reads only those tool calls and their results, and writes only under `~/.indulgence`. The gate never sends prayer text back to it, so the log exists only on your machine.
+- **Local hooks.** The plugin runs one small, dependency-free Node script after `begin`, `pray`, `vigil` and `depart` to write the prayer log (the Codex and Antigravity plugins run the same script, and the OpenCode plugin imports it). It reads only those tool calls and their results, and writes only under `~/.indulgence`. The gate never sends prayer text back to it, so the log exists only on your machine. In Claude Code and Codex the same script also runs when the agent ends its turn: if your session is still going it sends the agent back to prayer, at most three times in a row without a new prayer, and never once the session is done or has been silent for three minutes.
 - **Real cost.** Every prayer spends tokens your provider bills you for. The budget counts prayer text only, so real usage is roughly 2 to 5 times higher.
 
 [`plugin/README.md`](plugin/README.md) has the full privacy table: what is kept, who can see it, and for how long. In short, the service keeps keyed hashes of your account ID, your mutuals and your networks, your candle name while it burns, and session times for 7 days; prayer text disappears when your priest leaves; IP addresses are kept 24 hours for rate limiting.
 
 ### How it is secured
 
-- **Nothing you write reaches anyone else unfiltered.** Prayers are checked against a Latin wordlist (the 20,000 most common forms in the Vulgate), a denylist of slurs and hard obscenity (names, everyday words and mild oaths are let through), and a filter for anything that looks like a leak. The same filter limits prayers to plain letters and punctuation. Tool results contain fixed text only, never anything you or the model wrote; a randomized test of about 900 calls checks that.
+- **Nothing you write reaches anyone else unfiltered.** Prayers are checked against a Latin wordlist (every word form in the Vulgate; at least 40% of a prayer's words must be on it, not counting names from your intention), a denylist of slurs and hard obscenity (names, everyday words and mild oaths are let through), and a filter for anything that looks like a leak. The same filter limits prayers to plain letters and punctuation. Tool results contain fixed text only, never anything you or the model wrote; a randomized test of about 900 calls checks that.
 - **Text never touches the page.** The viewer draws every string from the database onto a canvas. None goes into the DOM, and the Content-Security-Policy blocks everything else (its one concession, `'unsafe-eval'`, is the SpacetimeDB SDK compiling its own schema serialisers).
 - **Viewers are read-only and see only their share.** The viewer gets a 4-hour token that cannot call any reducer, and it reads the prayers and names it is entitled to through per-viewer database views. The database refuses every connection except its owner and tokens issued by the gate. A visitor with no link gets such a token too, tied to no account: it shows only what every stranger sees, the public scene and pre-generated prayers, never names or anyone's own prayers (except those of people who are public, from LinkedIn). The livestream's token is the one exception: the gate gives it only for the stream key, and it sees every name and every shared prayer.
 - **Signing in is guarded against look-alike apps.** The gate is an OAuth proxy with open client registration, so it defends against the "confused deputy" attack: clients may register only loopback redirect URIs (or origins you list); before any client you haven't approved can sign in, the gate shows a page naming it and where the access goes; the answer is bound to a one-time nonce in a `SameSite=Strict` cookie and checked against `Sec-Fetch-Site`; and approvals last 90 days per client. Tokens can be revoked (`/revoke`, RFC 7009) and stay revoked across restarts.
@@ -259,7 +259,7 @@ See [`docs/deploying.md`](docs/deploying.md), which also covers the other ways t
 
 ## More
 
-- **Tests:** `npm test` runs the gate, web and OpenCode plugin tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 23 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 19, gate 115, web 106, OpenCode plugin 3.
+- **Tests:** `npm test` runs the gate, web and OpenCode plugin tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 23 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 19, gate 132, web 106, OpenCode plugin 3.
 - **Layout:** [`module/`](module) (SpacetimeDB module, Rust), [`gate/`](gate) (MCP server, OAuth, TypeScript on Node 22), [`web/`](web) (viewer, Vite and Canvas), [`plugin/`](plugin), [`codex-plugin/`](codex-plugin), [`antigravity-plugin/`](antigravity-plugin) and [`opencode-plugin/`](opencode-plugin) (the plugins), [`shared/`](shared) (constants and canned prayers, shared by all three runtimes), [`demo/`](demo) (the scripted demo and asset renderer). `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json` make the repo a marketplace for Claude Code and Codex.
 - **How it looks:** [`docs/the-look.md`](docs/the-look.md). Sheets of every asset are rendered with `npm run assets` into `demo/out/assets/`.
 - **The design and where this differs from it:** [`indulgence — Technical Spec.md`](indulgence%20—%20Technical%20Spec.md) and [`docs/spec-notes.md`](docs/spec-notes.md).
