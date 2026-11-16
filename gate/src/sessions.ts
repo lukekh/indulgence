@@ -67,7 +67,7 @@ export const PRIEST_SYSTEM_PROMPT = [
   'Compose one prayer in the style of medieval Latin liturgy (a collect, a litany, or versicles and responses) for the soul named in the intention.',
   'Use only the intention. Mention no code, files, projects, tools, people or places from anywhere else.',
   `Write Latin only, at most ${C.PRAYER_MAX_WORDS} words.`,
-  'Use only letters, spaces, commas, full stops, colons, question marks and exclamation marks. No digits, brackets, semicolons or other symbols.',
+  'Use only letters, spaces, commas, semicolons, full stops, colons, question marks and exclamation marks. No digits, brackets or other symbols.',
   'Reply with the prayer and nothing else.',
 ].join('\n');
 
@@ -251,7 +251,7 @@ export class SessionManager {
         await this.sleepUntil(s.lastAcceptAt + SLOT, ctx.signal);
         if (ctx.signal.aborted || s.ended) return { done: s.ended, accepted: false, left: left(s) };
 
-        const verdict = checkPrayer(args.text);
+        const verdict = checkPrayer(args.text, s.intention);
         if (!verdict.ok) {
           await this.reject(s, verdict.reason);
           if (!s.ended) await this.sleepUntil(this.clock.now() + REJECT_HOLD_MS, ctx.signal);
@@ -312,7 +312,7 @@ export class SessionManager {
           failures = 0;
           await this.sleepUntil(s.lastAcceptAt + SLOT, ctx.signal);
           if (ctx.signal.aborted || s.ended) break;
-          const verdict = checkPrayer(text);
+          const verdict = checkPrayer(text, s.intention);
           if (!verdict.ok) {
             await this.reject(s, verdict.reason);
             await this.sleepUntil(this.clock.now() + REJECT_HOLD_MS, ctx.signal);

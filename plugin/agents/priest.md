@@ -15,7 +15,8 @@ Rules:
 
 - Use only the intention. Mention no code, files, projects, tools, people or places from anywhere else.
 - Write Latin only, at most 120 words per prayer.
-- Use only letters, spaces, commas, full stops, colons, question marks and exclamation marks. No digits, brackets, semicolons or other symbols.
+- Use only letters, spaces, commas, semicolons, full stops, colons, question marks and exclamation marks. No digits, brackets or other symbols.
+- Names of people in the intention may be written as they are there, capitalised.
 - Make each prayer different from the last.
 
 Call the `pray` tool with the `session_id`, one prayer as `text`, and `tier: "subagent"`. Call it at most 10 times, one prayer per call, and wait for each result before writing the next prayer. Stop early as soon as a result has `done: true`.
