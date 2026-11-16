@@ -1,8 +1,9 @@
 // Builds the bundled safety data:
-//   src/safety/data/latin-words.ts — ~20k Latin word forms (folded), by frequency in the
-//                                     public-domain Clementine Vulgate, plus the canned prayers.
+//   src/safety/data/latin-words.ts — every Latin word form (folded) in the public-domain
+//                                     Clementine Vulgate, about 46k, plus the canned prayers.
 //   src/safety/data/denylist.ts     — multilingual denylist from LDNOOBW (CC BY 4.0), minus
-//                                     entries that are ordinary Latin words (e.g. "cum").
+//                                     entries that are ordinary Latin words (e.g. "cum"): those
+//                                     among the 20k most frequent forms in the Vulgate.
 //
 // Usage: npm run build:data -- --vulgate <dir of eBible latVUC *_read.txt> --ldnoobw <dir of language files>
 // Sources:
@@ -15,7 +16,12 @@ import { fileURLToPath } from 'node:url';
 import { foldLatin, words, denylistTokens, foldForDenylist } from '../src/safety/normalize.js';
 import canned from '../../shared/canned-prayers.json';
 
-const LATIN_FORMS = 20_000;
+/**
+ * A denylist entry is let go as an ordinary Latin word only if it is among this many of the
+ * most frequent forms. The Latin list itself keeps every form, but a rare form is no reason
+ * to let a slur through.
+ */
+const COMMON_FORMS = 20_000;
 // Scripts written without spaces between words: match these entries as substrings.
 const NO_SPACE_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
 
@@ -41,12 +47,15 @@ for (const f of readdirSync(vulgateDir)) {
   }
 }
 const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
-const latin = new Set(ranked.slice(0, LATIN_FORMS).map(([w]) => w));
-for (const p of canned.prayers) for (const w of words(p.text)) latin.add(foldLatin(w));
+const latin = new Set(ranked.map(([w]) => w));
+const common = new Set(ranked.slice(0, COMMON_FORMS).map(([w]) => w));
+const extra: string[] = [];
+for (const p of canned.prayers) for (const w of words(p.text)) extra.push(foldLatin(w));
 // A few liturgical forms common in generated prayers but rare in the Vulgate.
 for (const w of ['eleison', 'kyrie', 'christe', 'oremus', 'amen', 'alleluia', 'requiescat', 'requiescant', 'intentio', 'ora', 'orate']) {
-  latin.add(foldLatin(w));
+  extra.push(foldLatin(w));
 }
+for (const w of extra) latin.add(w), common.add(w);
 const latinSorted = [...latin].filter((w) => w.length > 0).sort();
 console.log(`latin: ${counts.size} distinct forms in source, kept ${latinSorted.length}`);
 writeFileSync(
@@ -72,7 +81,7 @@ for (const f of readdirSync(ldnoobwDir).sort()) {
     const toks = denylistTokens(entry);
     if (toks.length === 0) continue;
     if (toks.length === 1 && toks[0]!.length < 3) continue;
-    if (toks.length === 1 && latin.has(foldLatin(toks[0]!))) {
+    if (toks.length === 1 && common.has(foldLatin(toks[0]!))) {
       collisions.push(`${f.replace('.txt', '')}:${toks[0]}`);
       continue;
     }

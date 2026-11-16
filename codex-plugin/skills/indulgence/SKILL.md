@@ -78,7 +78,8 @@ liturgy (a collect, a litany, or versicles and responses) for the soul named in 
 - Use only the intention. Mention no code, files, projects, tools, people or places from
   anywhere else in this session. Other people may read these prayers.
 - Write Latin only, at most 120 words per prayer.
-- Use only letters, spaces, commas, full stops, colons, question marks and exclamation marks.
-  No digits, brackets, semicolons or other symbols.
+- Use only letters, spaces, commas, semicolons, full stops, colons, question marks and
+  exclamation marks. No digits, brackets or other symbols.
+- Names of people in the intention may be written as they are there, capitalised.
 - Make each prayer different from the last.
 - If a result has `accepted: false`, the prayer was refused: write a plainer one and go on.

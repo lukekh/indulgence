@@ -28,9 +28,10 @@ const str = { type: 'string' } as const;
 
 /** What a prayer must be to pass the filter (safety/), told to every client up front. */
 export const PRAYER_RULES =
-  'Write Latin only: most of the words must be common Latin words (as in the Vulgate), so keep rare or modern words few. ' +
+  'Write Latin only: a prayer is refused if fewer than 4 in 10 of its words are Latin words found in the Vulgate, so keep modern words few. ' +
+  'Names of people in the intention, capitalised as they are there, are not counted against you. ' +
   `At most ${C.PRAYER_MAX_CHARS} characters, about ${C.PRAYER_MAX_WORDS} words. ` +
-  'Use only letters, spaces and . , : ? ! (no digits, brackets, slashes or other symbols). ' +
+  'Use only letters, spaces and . , ; : ? ! (no digits, brackets, slashes or other symbols). ' +
   'Do not repeat yourself, and make each prayer different from the last.';
 
 /**
