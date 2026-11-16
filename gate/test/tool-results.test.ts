@@ -62,7 +62,7 @@ async function settle<T>(p: Promise<T>): Promise<T> {
 describe('a refused prayer', () => {
   it('gets the same advice whatever the reason, so the agent carries on, and the log gets only the reason', async () => {
     const store = new FakeStore();
-    store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: '', mutualHashes: [], labelMode: 'Username' });
+    store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: '', mutualHashes: [], networkChecks: [], public: false, labelMode: 'Username' });
     const sessions = new SessionManager(store, 'https://site.test');
     const refused: string[] = [];
     sessions.onRefused = (reason) => refused.push(reason);
@@ -95,7 +95,7 @@ describe('a refused prayer', () => {
 describe('an agent', () => {
   it('is told when it begins to keep praying until done, and to depart only when the user asks', async () => {
     const store = new FakeStore();
-    store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: '', mutualHashes: [], labelMode: 'Username' });
+    store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: '', mutualHashes: [], networkChecks: [], public: false, labelMode: 'Username' });
     const sessions = new SessionManager(store, 'https://site.test');
     const begun = await callTool(sessions, 'begin', { intention: 'pro anima mea' }, { account: alice, signal: new AbortController().signal });
     const text = (begun.content[0] as { text: string }).text;
@@ -113,7 +113,7 @@ describe('tool results', () => {
     let acceptedMarked = 0;
     for (let trial = 0; trial < 150; trial++) {
       const store = new FakeStore();
-      store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: 'Alice Secret', mutualHashes: [], labelMode: 'FullName' });
+      store.accounts.set(alice.ghHash, { ...alice, ghLogin: 'alice', ghName: 'Alice Secret', mutualHashes: [], networkChecks: [], public: false, labelMode: 'FullName' });
       const sessions = new SessionManager(store, 'https://site.test');
       // Intentions, prayers and names are all user-written; mark each one.
       const marker = `Zq${trial}x${Math.floor(r() * 1e9).toString(36)}`;

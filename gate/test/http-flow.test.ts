@@ -310,6 +310,11 @@ describe('sign-in, MCP and viewer tokens', () => {
     store.occupied = [];
   });
 
+  it('has no livestream without a stream key', async () => {
+    const res = await fetch(`${base}/broadcast-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'x'.repeat(32) }) });
+    expect(res.status).toBe(404);
+  });
+
   it("accepts Antigravity's hosted callback only when its origin is listed", () => {
     const relay = 'https://antigravity.google/oauth-callback';
     expect(redirectAllowed(relay)).toBe(false);

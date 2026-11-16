@@ -23,6 +23,12 @@ export const Account = __t.object("Account", {
 });
 export type Account = __Infer<typeof Account>;
 
+export const Broadcaster = __t.object("Broadcaster", {
+  identity: __t.identity(),
+  since: __t.timestamp(),
+});
+export type Broadcaster = __Infer<typeof Broadcaster>;
+
 export const Candle = __t.object("Candle", {
   candleId: __t.u64(),
   x: __t.i32(),
@@ -79,6 +85,19 @@ export const LabelMode = __t.enum("LabelMode", {
 });
 export type LabelMode = __Infer<typeof LabelMode>;
 
+export const Network = __t.object("Network", {
+  networkId: __t.u64(),
+  check: __t.string(),
+});
+export type Network = __Infer<typeof Network>;
+
+export const NetworkMember = __t.object("NetworkMember", {
+  id: __t.u64(),
+  ghHash: __t.string(),
+  networkId: __t.u64(),
+});
+export type NetworkMember = __Infer<typeof NetworkMember>;
+
 export const Owner = __t.object("Owner", {
   id: __t.u8(),
   identity: __t.identity(),
@@ -131,6 +150,26 @@ export const PriestState = __t.enum("PriestState", {
   Departing: __t.unit(),
 });
 export type PriestState = __Infer<typeof PriestState>;
+
+export const PublicAccount = __t.object("PublicAccount", {
+  ghHash: __t.string(),
+});
+export type PublicAccount = __Infer<typeof PublicAccount>;
+
+export const PublicLabel = __t.object("PublicLabel", {
+  priestId: __t.u64(),
+  label: __t.string(),
+});
+export type PublicLabel = __Infer<typeof PublicLabel>;
+
+export const PublicPrayer = __t.object("PublicPrayer", {
+  id: __t.u64(),
+  priestId: __t.u64(),
+  seq: __t.u32(),
+  text: __t.string(),
+  at: __t.timestamp(),
+});
+export type PublicPrayer = __Infer<typeof PublicPrayer>;
 
 export const ReapStaleJob = __t.object("ReapStaleJob", {
   scheduledId: __t.u64(),

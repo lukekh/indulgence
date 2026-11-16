@@ -7,16 +7,26 @@ import { StdbStore } from './stdb.js';
 import { SessionManager } from './sessions.js';
 import { GateOAuthProvider } from './oauth/provider.js';
 import { RealGitHub } from './oauth/github.js';
+import { GOOGLE, LINKEDIN, MICROSOFT, OidcProvider } from './oauth/oidc.js';
+import { DiscordProvider } from './oauth/discord.js';
+import type { IdentityProvider } from './oauth/identity.js';
 import { createApp } from './server.js';
 
 const cfg = loadConfig();
 const keys = await Keys.create(cfg);
 const store = new DeferredStore();
 const sessions = new SessionManager(store, cfg.siteUrl);
+// The other ways in, in the order the sign-in page offers them after GitHub.
+const providers: IdentityProvider[] = [];
+if (cfg.google) providers.push(new OidcProvider(GOOGLE, cfg.google.clientId, cfg.google.clientSecret));
+if (cfg.microsoft) providers.push(new OidcProvider(MICROSOFT, cfg.microsoft.clientId, cfg.microsoft.clientSecret));
+if (cfg.discord) providers.push(new DiscordProvider(cfg.discord.clientId, cfg.discord.clientSecret));
+if (cfg.linkedin) providers.push(new OidcProvider(LINKEDIN, cfg.linkedin.clientId, cfg.linkedin.clientSecret));
 const oauth = new GateOAuthProvider({
   keys,
   store,
   github: new RealGitHub(cfg.githubClientId, cfg.githubClientSecret),
+  providers,
   publicUrl: cfg.publicUrl,
   devSkipAgeCheck: cfg.devSkipAgeCheck,
   allowedRedirectOrigins: cfg.allowedRedirectOrigins,
@@ -26,7 +36,15 @@ sessions.onForgotten = (ghHash) => oauth.markForgotten(ghHash);
 sessions.onRefused = (reason) => console.log(`[pray] refused: ${reason}`);
 sessions.gateUrl = cfg.publicUrl;
 
-const { app, closeIdleTransports } = createApp({ cfg, keys, oauth, sessions, isStoreReady: () => store.isReady(), occupiedXs: () => store.occupiedXs() });
+const { app, closeIdleTransports } = createApp({
+  cfg,
+  keys,
+  oauth,
+  sessions,
+  isStoreReady: () => store.isReady(),
+  occupiedXs: () => store.occupiedXs(),
+  setBroadcaster: (sub) => store.setBroadcaster(sub),
+});
 const http = app.listen(cfg.port, cfg.host, () => {
   console.log(`[gate] listening on ${cfg.host}:${cfg.port} as ${cfg.publicUrl}`);
 });

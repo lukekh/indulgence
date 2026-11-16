@@ -40,6 +40,8 @@ import ForgetReducer from "./forget_reducer";
 import HeartbeatReducer from "./heartbeat_reducer";
 import PostPrayerReducer from "./post_prayer_reducer";
 import RevokeGrantReducer from "./revoke_grant_reducer";
+import SetBroadcasterReducer from "./set_broadcaster_reducer";
+import SignInReducer from "./sign_in_reducer";
 import TouchAccountReducer from "./touch_account_reducer";
 import UpsertAccountReducer from "./upsert_account_reducer";
 
@@ -50,6 +52,8 @@ import CandleRow from "./candle_table";
 import PrayerTextRow from "./prayer_text_table";
 import PrayerTickRow from "./prayer_tick_table";
 import PriestRow from "./priest_table";
+import PublicLabelRow from "./public_label_table";
+import PublicPrayerRow from "./public_prayer_table";
 import ViewerLabelRow from "./viewer_label_table";
 
 /** Type-only namespace exports for generated type groups. */
@@ -107,6 +111,31 @@ const tablesSchema = __schema({
       { name: 'priest_priest_id_key', constraint: 'unique', columns: ['priestId'] },
     ],
   }, PriestRow),
+  publicLabel: __table({
+    name: 'public_label',
+    indexes: [
+      { accessor: 'priest_id', name: 'public_label_priest_id_idx_btree', algorithm: 'btree', columns: [
+        'priestId',
+      ] },
+    ],
+    constraints: [
+      { name: 'public_label_priest_id_key', constraint: 'unique', columns: ['priestId'] },
+    ],
+  }, PublicLabelRow),
+  publicPrayer: __table({
+    name: 'public_prayer',
+    indexes: [
+      { accessor: 'id', name: 'public_prayer_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'priest_id', name: 'public_prayer_priest_id_idx_btree', algorithm: 'btree', columns: [
+        'priestId',
+      ] },
+    ],
+    constraints: [
+      { name: 'public_prayer_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, PublicPrayerRow),
   prayerText: __table({
     name: 'prayer_text',
     indexes: [
@@ -131,6 +160,8 @@ const reducersSchema = __reducers(
   __reducerSchema("heartbeat", HeartbeatReducer),
   __reducerSchema("post_prayer", PostPrayerReducer),
   __reducerSchema("revoke_grant", RevokeGrantReducer),
+  __reducerSchema("set_broadcaster", SetBroadcasterReducer),
+  __reducerSchema("sign_in", SignInReducer),
   __reducerSchema("touch_account", TouchAccountReducer),
   __reducerSchema("upsert_account", UpsertAccountReducer),
 );
@@ -143,6 +174,10 @@ type __SchemaWithTableAccessorAliases = Omit<typeof tablesSchema.schemaType, "ta
   tables: typeof tablesSchema.schemaType.tables & {
     /** @deprecated Use `prayerTick` instead. This alias will be removed in the next major version. */
     readonly "prayer_tick": Omit<typeof tablesSchema.schemaType.tables["prayerTick"], "accessorName"> & { readonly accessorName: "prayer_tick" };
+    /** @deprecated Use `publicLabel` instead. This alias will be removed in the next major version. */
+    readonly "public_label": Omit<typeof tablesSchema.schemaType.tables["publicLabel"], "accessorName"> & { readonly accessorName: "public_label" };
+    /** @deprecated Use `publicPrayer` instead. This alias will be removed in the next major version. */
+    readonly "public_prayer": Omit<typeof tablesSchema.schemaType.tables["publicPrayer"], "accessorName"> & { readonly accessorName: "public_prayer" };
     /** @deprecated Use `prayerText` instead. This alias will be removed in the next major version. */
     readonly "prayer_text": Omit<typeof tablesSchema.schemaType.tables["prayerText"], "accessorName"> & { readonly accessorName: "prayer_text" };
     /** @deprecated Use `viewerLabel` instead. This alias will be removed in the next major version. */
@@ -166,6 +201,8 @@ const REMOTE_MODULE = {
 
 const tableAccessorAliases = {
   "prayer_tick": "prayerTick",
+  "public_label": "publicLabel",
+  "public_prayer": "publicPrayer",
   "prayer_text": "prayerText",
   "viewer_label": "viewerLabel",
 } as const;
@@ -190,6 +227,10 @@ type __DbViewBase = __DbConnectionImpl<typeof REMOTE_MODULE>["db"];
 export type DbView = __DbViewBase & {
   /** @deprecated Use `prayerTick` instead. This alias will be removed in the next major version. */
   readonly "prayer_tick": __DbViewBase["prayerTick"];
+  /** @deprecated Use `publicLabel` instead. This alias will be removed in the next major version. */
+  readonly "public_label": __DbViewBase["publicLabel"];
+  /** @deprecated Use `publicPrayer` instead. This alias will be removed in the next major version. */
+  readonly "public_prayer": __DbViewBase["publicPrayer"];
   /** @deprecated Use `prayerText` instead. This alias will be removed in the next major version. */
   readonly "prayer_text": __DbViewBase["prayerText"];
   /** @deprecated Use `viewerLabel` instead. This alias will be removed in the next major version. */
@@ -200,6 +241,10 @@ type __TablesBase = __QueryBuilder<typeof tablesSchema.schemaType>;
 export type Tables = __TablesBase & {
   /** @deprecated Use `prayerTick` instead. This alias will be removed in the next major version. */
   readonly "prayer_tick": __TablesBase["prayerTick"];
+  /** @deprecated Use `publicLabel` instead. This alias will be removed in the next major version. */
+  readonly "public_label": __TablesBase["publicLabel"];
+  /** @deprecated Use `publicPrayer` instead. This alias will be removed in the next major version. */
+  readonly "public_prayer": __TablesBase["publicPrayer"];
   /** @deprecated Use `prayerText` instead. This alias will be removed in the next major version. */
   readonly "prayer_text": __TablesBase["prayerText"];
   /** @deprecated Use `viewerLabel` instead. This alias will be removed in the next major version. */

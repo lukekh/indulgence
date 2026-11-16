@@ -12,6 +12,8 @@ import ForgetReducer from "../forget_reducer";
 import HeartbeatReducer from "../heartbeat_reducer";
 import PostPrayerReducer from "../post_prayer_reducer";
 import RevokeGrantReducer from "../revoke_grant_reducer";
+import SetBroadcasterReducer from "../set_broadcaster_reducer";
+import SignInReducer from "../sign_in_reducer";
 import TouchAccountReducer from "../touch_account_reducer";
 import UpsertAccountReducer from "../upsert_account_reducer";
 
@@ -21,6 +23,8 @@ export type ForgetParams = __Infer<typeof ForgetReducer>;
 export type HeartbeatParams = __Infer<typeof HeartbeatReducer>;
 export type PostPrayerParams = __Infer<typeof PostPrayerReducer>;
 export type RevokeGrantParams = __Infer<typeof RevokeGrantReducer>;
+export type SetBroadcasterParams = __Infer<typeof SetBroadcasterReducer>;
+export type SignInParams = __Infer<typeof SignInReducer>;
 export type TouchAccountParams = __Infer<typeof TouchAccountReducer>;
 export type UpsertAccountParams = __Infer<typeof UpsertAccountReducer>;
 

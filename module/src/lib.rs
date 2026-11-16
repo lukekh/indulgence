@@ -120,15 +120,18 @@ pub struct GateService {
     pub since: Timestamp,
 }
 
-/// One row per GitHub user.
+/// One row per person signed in. The `gh_` columns are named for GitHub, the first way in;
+/// they hold the same for every provider.
 #[spacetimedb::table(accessor = account)]
 pub struct Account {
     /// The user's viewer identity: `Identity::from_claims(issuer, viewer_sub)`.
     #[primary_key]
     pub identity: Identity,
-    /// HMAC of the GitHub numeric id.
+    /// The gate's keyed hash of the person's id at the provider they signed in with.
     #[unique]
     pub gh_hash: String,
+    /// The short name: a GitHub or Discord username, or a first name where the
+    /// provider has no usernames. Already checked by the gate.
     pub gh_login: String,
     /// Display name, already cleaned and capped by the gate. Empty if unusable.
     pub gh_name: String,
@@ -160,6 +163,48 @@ pub struct FollowEdge {
     pub owner_hash: String,
     #[index(btree)]
     pub other_hash: String,
+}
+
+/// A network that is not a follow graph: a Google Workspace domain, a Microsoft tenant or a
+/// Discord server. `check` is the gate's keyed hash of which one it is, so the database never
+/// learns that; members are linked to it by its opaque id. A network goes when its last
+/// member does.
+#[spacetimedb::table(accessor = network)]
+pub struct Network {
+    #[primary_key]
+    #[auto_inc]
+    pub network_id: u64,
+    #[unique]
+    pub check: String,
+}
+
+/// Who is in which network, as of each member's latest sign-in.
+#[spacetimedb::table(accessor = network_member)]
+pub struct NetworkMember {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub gh_hash: String,
+    #[index(btree)]
+    pub network_id: u64,
+}
+
+/// Accounts every viewer may see by name, prayers and all: those signed in with LinkedIn,
+/// which offers no network to share them with instead.
+#[spacetimedb::table(accessor = public_account)]
+pub struct PublicAccount {
+    #[primary_key]
+    pub gh_hash: String,
+}
+
+/// The livestream's viewer identity. It is given every priest's name, and so every prayer
+/// that its owner shares (see `post_prayer`).
+#[spacetimedb::table(accessor = broadcaster)]
+pub struct Broadcaster {
+    #[primary_key]
+    pub identity: Identity,
+    pub since: Timestamp,
 }
 
 /// Sessions: live ones plus ended ones kept for 7 days (spend percentiles, retention).
@@ -264,6 +309,27 @@ pub struct PrayerTick {
     pub x: i32,
     pub seq: u32,
     pub canned_idx: u32,
+    pub at: Timestamp,
+}
+
+/// Names of priests whose owners are public (`public_account`), for every viewer.
+#[spacetimedb::table(accessor = public_label, public)]
+pub struct PublicLabel {
+    #[primary_key]
+    pub priest_id: u64,
+    pub label: String,
+}
+
+/// Their prayers, unless they opted out of sharing: the last few per priest.
+#[spacetimedb::table(accessor = public_prayer, public)]
+pub struct PublicPrayer {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub priest_id: u64,
+    pub seq: u32,
+    pub text: String,
     pub at: Timestamp,
 }
 
@@ -379,7 +445,8 @@ fn label_of(a: &Account) -> String {
     }
 }
 
-/// Live mutuals of `account`, each with their live session.
+/// Live mutuals of `account`, each with their live session: people it follows mutually, and
+/// people in a network with it.
 fn live_mutuals(ctx: &ReducerContext, account: &Account) -> Vec<(Account, Session)> {
     let h = &account.gh_hash;
     let mut hashes: HashSet<String> = ctx
@@ -390,6 +457,9 @@ fn live_mutuals(ctx: &ReducerContext, account: &Account) -> Vec<(Account, Sessio
         .map(|e| e.other_hash)
         .collect();
     hashes.extend(ctx.db.follow_edge().other_hash().filter(h).map(|e| e.owner_hash));
+    for m in ctx.db.network_member().gh_hash().filter(h) {
+        hashes.extend(ctx.db.network_member().network_id().filter(m.network_id).map(|o| o.gh_hash));
+    }
     hashes.remove(h);
 
     let mut out = Vec::new();
@@ -449,6 +519,51 @@ fn delete_viewer_rows(ctx: &ReducerContext, identity: Identity, priest_id: u64) 
     ctx.db.viewer_label_store().viewer().delete(identity);
     ctx.db.prayer_text_store().priest_id().delete(priest_id);
     ctx.db.prayer_text_store().viewer().delete(identity);
+    ctx.db.public_label().priest_id().delete(priest_id);
+    ctx.db.public_prayer().priest_id().delete(priest_id);
+}
+
+fn add_public_prayer(ctx: &ReducerContext, priest_id: u64, seq: u32, text: &str) {
+    ctx.db.public_prayer().insert(PublicPrayer { id: 0, priest_id, seq, text: text.to_owned(), at: ctx.timestamp });
+    let mut rows: Vec<PublicPrayer> = ctx.db.public_prayer().priest_id().filter(priest_id).collect();
+    if rows.len() > c::PRAYER_TEXT_KEEP_PER_PAIR as usize {
+        rows.sort_by_key(|r| r.seq);
+        let excess = rows.len() - c::PRAYER_TEXT_KEEP_PER_PAIR as usize;
+        for r in rows.into_iter().take(excess) {
+            ctx.db.public_prayer().id().delete(r.id);
+        }
+    }
+}
+
+/// Give a viewer a priest's name, once.
+fn give_label(ctx: &ReducerContext, viewer: Identity, priest_id: u64, label: &str) {
+    if ctx.db.viewer_label_store().viewer().filter(viewer).any(|l| l.priest_id == priest_id) {
+        return;
+    }
+    ctx.db.viewer_label_store().insert(ViewerLabel { id: 0, viewer, priest_id, label: label.to_owned() });
+}
+
+/// Replace an account's network memberships, and drop networks nobody is left in.
+fn set_networks(ctx: &ReducerContext, gh_hash: &str, checks: Vec<String>) {
+    let old: Vec<NetworkMember> = ctx.db.network_member().gh_hash().filter(gh_hash).collect();
+    let mut touched: HashSet<u64> = old.iter().map(|m| m.network_id).collect();
+    for m in old {
+        ctx.db.network_member().id().delete(m.id);
+    }
+    let unique: HashSet<String> = checks.into_iter().collect();
+    for check in unique {
+        let network_id = match ctx.db.network().check().find(&check) {
+            Some(n) => n.network_id,
+            None => ctx.db.network().insert(Network { network_id: 0, check }).network_id,
+        };
+        touched.remove(&network_id);
+        ctx.db.network_member().insert(NetworkMember { id: 0, gh_hash: gh_hash.to_owned(), network_id });
+    }
+    for id in touched {
+        if ctx.db.network_member().network_id().filter(id).next().is_none() {
+            ctx.db.network().network_id().delete(id);
+        }
+    }
 }
 
 /// Place a candle on the priest's own stand, or on the one across its bay if that is full.
@@ -581,10 +696,8 @@ pub fn client_connected(ctx: &ReducerContext) -> Result<(), String> {
 // Gate reducers
 // ---------------------------------------------------------------------------
 
-/// Write the account row and replace the owner's follow edges.
-///
-/// `label_mode = None` keeps the stored choice; for a new account it fails with
-/// `consent_required`, which is how the gate learns to show the consent screen.
+/// The sign-in of a gate from before `sign_in`: GitHub only, no networks, not public. Kept so
+/// that a gate still running that code goes on working while a new one is deployed.
 #[spacetimedb::reducer]
 pub fn upsert_account(
     ctx: &ReducerContext,
@@ -595,11 +708,31 @@ pub fn upsert_account(
     label_mode: Option<LabelMode>,
     mutual_hashes: Vec<String>,
 ) -> Result<(), String> {
+    sign_in(ctx, viewer_sub, gh_hash, gh_login, gh_name, label_mode, mutual_hashes, Vec::new(), false)
+}
+
+/// Write the account row, and replace its follow edges, its networks and whether it is public.
+///
+/// `label_mode = None` keeps the stored choice; for a new account it fails with
+/// `consent_required`, which is how the gate learns to show the consent screen.
+#[allow(clippy::too_many_arguments)]
+#[spacetimedb::reducer]
+pub fn sign_in(
+    ctx: &ReducerContext,
+    viewer_sub: String,
+    gh_hash: String,
+    gh_login: String,
+    gh_name: String,
+    label_mode: Option<LabelMode>,
+    mutual_hashes: Vec<String>,
+    network_checks: Vec<String>,
+    public: bool,
+) -> Result<(), String> {
     require_gate(ctx)?;
     check_len(&viewer_sub, 1, 100, "viewer_sub")?;
     check_len(&gh_hash, 16, 64, "gh_hash")?;
-    check_len(&gh_login, 1, 39, "gh_login")?;
-    if !gh_login.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-') {
+    check_len(&gh_login, 1, 64, "gh_login")?;
+    if gh_login.chars().any(|ch| ch.is_control()) || gh_login.trim() != gh_login {
         return Err("invalid_gh_login".into());
     }
     check_len(&gh_name, 0, 40, "gh_name")?;
@@ -608,6 +741,12 @@ pub fn upsert_account(
     }
     for m in &mutual_hashes {
         check_len(m, 16, 64, "mutual")?;
+    }
+    if network_checks.len() > 200 {
+        return Err("invalid_networks".into());
+    }
+    for n in &network_checks {
+        check_len(n, 16, 64, "network")?;
     }
 
     let identity = Identity::from_claims(&ctx.env.INDULGENCE_ISSUER(), &viewer_sub);
@@ -634,6 +773,36 @@ pub fn upsert_account(
     let unique: HashSet<String> = mutual_hashes.into_iter().filter(|m| *m != gh_hash).collect();
     for other in unique {
         ctx.db.follow_edge().insert(FollowEdge { id: 0, owner_hash: gh_hash.clone(), other_hash: other });
+    }
+    set_networks(ctx, &gh_hash, network_checks);
+    if public {
+        if ctx.db.public_account().gh_hash().find(&gh_hash).is_none() {
+            ctx.db.public_account().insert(PublicAccount { gh_hash });
+        }
+    } else {
+        ctx.db.public_account().gh_hash().delete(&gh_hash);
+    }
+    Ok(())
+}
+
+/// Register the livestream's viewer (`viewer_sub` is the subject of its token) and give it the
+/// name of every priest already in the cathedral. Idempotent.
+#[spacetimedb::reducer]
+pub fn set_broadcaster(ctx: &ReducerContext, viewer_sub: String) -> Result<(), String> {
+    require_gate(ctx)?;
+    check_len(&viewer_sub, 1, 100, "viewer_sub")?;
+    let identity = Identity::from_claims(&ctx.env.INDULGENCE_ISSUER(), &viewer_sub);
+    if ctx.db.account().identity().find(identity).is_some() {
+        return Err("invalid_viewer_sub".into());
+    }
+    if ctx.db.broadcaster().identity().find(identity).is_none() {
+        ctx.db.broadcaster().insert(Broadcaster { identity, since: ctx.timestamp });
+    }
+    let live: Vec<Session> = ctx.db.session().live().filter(true).collect();
+    for s in live {
+        if let Some(acct) = ctx.db.account().identity().find(s.identity) {
+            give_label(ctx, identity, s.priest_id, &label_of(&acct));
+        }
     }
     Ok(())
 }
@@ -773,6 +942,14 @@ pub fn enter(
             label: my_label.clone(),
         });
     }
+    // The livestream sees everyone; a public account is seen by every viewer.
+    let broadcasters: Vec<Identity> = ctx.db.broadcaster().iter().map(|b| b.identity).collect();
+    for b in broadcasters {
+        give_label(ctx, b, priest_id, &my_label);
+    }
+    if ctx.db.public_account().gh_hash().find(&gh_hash).is_some() {
+        ctx.db.public_label().insert(PublicLabel { priest_id, label: my_label });
+    }
     Ok(())
 }
 
@@ -813,7 +990,11 @@ pub fn post_prayer(ctx: &ReducerContext, session_id: String, text: String, token
 
     add_prayer_text(ctx, identity, priest_id, seq, &text);
     if share {
-        // viewer_label rows for this priest exist exactly for its owner and live mutuals.
+        if ctx.db.public_label().priest_id().find(priest_id).is_some() {
+            add_public_prayer(ctx, priest_id, seq, &text);
+        }
+        // viewer_label rows for this priest exist exactly for its owner, its live mutuals and
+        // the livestream.
         let viewers: HashSet<Identity> = ctx
             .db
             .viewer_label_store()
@@ -877,6 +1058,8 @@ pub fn forget(ctx: &ReducerContext, gh_hash: String) -> Result<(), String> {
     ctx.db.follow_edge().owner_hash().delete(&gh_hash);
     ctx.db.follow_edge().other_hash().delete(&gh_hash);
     ctx.db.revoked_grant().gh_hash().delete(&gh_hash);
+    set_networks(ctx, &gh_hash, Vec::new());
+    ctx.db.public_account().gh_hash().delete(&gh_hash);
     Ok(())
 }
 

@@ -84,17 +84,19 @@ const users = {
   carol: { id: 1003, login: 'carol', name: '' },
 };
 const acct = (u: { id: number }) => ({ ghHash: keys.ghHash(u.id), viewerSub: keys.viewerSub(u.id) });
+/** In no network, and not public. */
+const solo = { networkChecks: [] as string[], public: false };
 
 await assert.rejects(
-  store.upsertAccount({ viewerSub: acct(users.alice).viewerSub, ghHash: acct(users.alice).ghHash, ghLogin: 'alice', ghName: 'Alice Liddell', mutualHashes: [] }),
+  store.upsertAccount({ viewerSub: acct(users.alice).viewerSub, ghHash: acct(users.alice).ghHash, ghLogin: 'alice', ghName: 'Alice Liddell', mutualHashes: [], ...solo }),
   /consent_required/,
 );
 ok('new account without a name choice fails with consent_required');
 
 // Only alice asserts the mutual edge; mutual(u, v) holds if either side asserted it.
-await store.upsertAccount({ ...acct(users.alice), ghLogin: 'alice', ghName: 'Alice Liddell', labelMode: 'FullName', mutualHashes: [keys.ghHash(users.bob.id)] });
-await store.upsertAccount({ ...acct(users.bob), ghLogin: 'bob', ghName: '', labelMode: 'Username', mutualHashes: [] });
-await store.upsertAccount({ ...acct(users.carol), ghLogin: 'carol', ghName: '', labelMode: 'Username', mutualHashes: [] });
+await store.upsertAccount({ ...acct(users.alice), ghLogin: 'alice', ghName: 'Alice Liddell', labelMode: 'FullName', mutualHashes: [keys.ghHash(users.bob.id)], ...solo });
+await store.upsertAccount({ ...acct(users.bob), ghLogin: 'bob', ghName: '', labelMode: 'Username', mutualHashes: [], ...solo });
+await store.upsertAccount({ ...acct(users.carol), ghLogin: 'carol', ghName: '', labelMode: 'Username', mutualHashes: [], ...solo });
 ok('accounts created after consent');
 
 // --- seating ----------------------------------------------------------------------
@@ -107,7 +109,7 @@ const begin = async (u: typeof users.alice, budget = 20000) => {
 const strangers = [];
 for (let i = 0; i < 6; i++) {
   const u = { id: 2000 + i, login: `stranger${i}`, name: '' };
-  await store.upsertAccount({ ...acct(u), ghLogin: u.login, ghName: '', labelMode: 'Username', mutualHashes: [] });
+  await store.upsertAccount({ ...acct(u), ghLogin: u.login, ghName: '', labelMode: 'Username', mutualHashes: [], ...solo });
   strangers.push(await begin(u, 1000 + i * 1000));
 }
 const a = await begin(users.alice);
@@ -125,7 +127,13 @@ const ci = await priestOf(c);
 
 // --- viewers ------------------------------------------------------------------------
 type Viewer = { conn: DbConnection; info: { priestId: bigint; px: number; viewerSub: string } };
-async function viewer(info: { priestId: bigint; px: number; viewerSub: string }, overrides: Record<string, unknown> = {}, aud = MODULE, signer = keys): Promise<Viewer> {
+async function viewer(
+  info: { priestId: bigint; px: number; viewerSub: string },
+  overrides: Record<string, unknown> = {},
+  aud = MODULE,
+  signer = keys,
+  queries?: string[],
+): Promise<Viewer> {
   const token = await signer.sign({ tt: 'viewer', role: 'viewer', px: info.px, pid: info.priestId.toString(), ...overrides } as never, {
     aud,
     sub: info.viewerSub,
@@ -145,13 +153,15 @@ async function viewer(info: { priestId: bigint; px: number; viewerSub: string },
       .subscriptionBuilder()
       .onApplied(() => resolve({ conn, info }))
       .onError((ctx) => reject(ctx.event ?? new Error('subscription error')))
-      .subscribe([
-        `SELECT * FROM priest WHERE x >= ${lo} AND x < ${hi}`,
-        `SELECT * FROM prayer_tick WHERE x >= ${lo} AND x < ${hi}`,
-        `SELECT * FROM candle WHERE x >= ${lo} AND x < ${hi}`,
-        'SELECT * FROM viewer_label',
-        'SELECT * FROM prayer_text',
-      ]);
+      .subscribe(
+        queries ?? [
+          `SELECT * FROM priest WHERE x >= ${lo} AND x < ${hi}`,
+          `SELECT * FROM prayer_tick WHERE x >= ${lo} AND x < ${hi}`,
+          `SELECT * FROM candle WHERE x >= ${lo} AND x < ${hi}`,
+          'SELECT * FROM viewer_label',
+          'SELECT * FROM prayer_text',
+        ],
+      );
   });
 }
 
@@ -279,6 +289,63 @@ assert.equal(textsOf(vc), 0, 'a stranger does not');
 assert.ok(vb.conn.db.prayerTick.priestId.find(a2i.priestId), 'but a mutual still sees the priest pray (a canned prayer)');
 ok('opting out: only the owner reads the prayers; everyone else gets only the tick that selects a canned prayer');
 
+
+// --- networks, public accounts and the livestream ------------------------------------------------
+// Dora and Ed signed in with the same Google Workspace; Fay with LinkedIn (public).
+const workspace = keys.networkCheck('google-hd:example.com');
+const people = {
+  dora: { provider: 'google', id: 'g-dora', login: 'Dora', networkChecks: [workspace], public: false },
+  ed: { provider: 'google', id: 'g-ed', login: 'Ed', networkChecks: [workspace], public: false },
+  fay: { provider: 'linkedin', id: 'l-fay', login: 'Fay', networkChecks: [] as string[], public: true },
+};
+const who = (p: (typeof people)['dora']) => ({ ghHash: keys.accountHash(p.provider, p.id), viewerSub: keys.viewerSubFor(p.provider, p.id) });
+for (const p of Object.values(people)) {
+  await store.upsertAccount({ ...who(p), ghLogin: p.login, ghName: '', labelMode: 'Username', mutualHashes: [], networkChecks: p.networkChecks, public: p.public });
+}
+assert.match(sql('SELECT * FROM network'), new RegExp(workspace));
+assert.ok(!/example\.com/.test(sql('SELECT * FROM network')), 'the database never holds the Workspace itself');
+const beginAs = async (p: (typeof people)['dora']) => {
+  const r = await sessions.begin(who(p), { intention: `pro anima ${p.login}` }, { mode: 'pray', mcpSessionId: `mcp-${p.login}` });
+  assert.ok('session_id' in r, `begin failed: ${JSON.stringify(r)}`);
+  return { r, info: await priestOf(r) };
+};
+const d = await beginAs(people.dora);
+const e = await beginAs(people.ed);
+const vd = await viewer(d.info);
+const nameOf = (v: Viewer, id: bigint) => [...v.conn.db.viewerLabel.iter()].find((l) => l.priestId === id)?.label;
+assert.equal(nameOf(vd, e.info.priestId), 'Ed');
+assert.equal(row(vd, d.info.priestId).bay, row(vd, e.info.priestId).bay, 'colleagues share a bay');
+assert.equal(nameOf(vc, d.info.priestId), undefined, 'a stranger is not told their names');
+ok('people in one network are mutuals: they share a bay and see each other by name, and nobody else does');
+
+const f = await beginAs(people.fay);
+await store.postPrayer({ sessionId: f.r.session_id, text: LATIN_PRAYERS[3]!, tokens: 60, tier: 'Subagent' });
+const vs = await viewer({ priestId: 0n, px: 0, viewerSub: 'spectator:it' }, {}, MODULE, keys, ['SELECT * FROM public_label', 'SELECT * FROM public_prayer']);
+await sleep(300);
+assert.deepEqual([...vs.conn.db.publicLabel.iter()].map((l) => l.label), ['Fay']);
+assert.deepEqual([...vs.conn.db.publicPrayer.iter()].map((t) => t.text), [LATIN_PRAYERS[3]]);
+ok('a public account (LinkedIn) is named, prayers and all, for every viewer, even one tied to no account');
+
+await store.setBroadcaster('broadcast');
+await store.setBroadcaster('broadcast'); // idempotent
+const vbc = await viewer({ priestId: 0n, px: 0, viewerSub: 'broadcast' }, {}, MODULE, keys, ['SELECT * FROM priest', 'SELECT * FROM viewer_label', 'SELECT * FROM prayer_text']);
+const live = [...vbc.conn.db.priest.iter()].filter((p) => p.state.tag !== 'Departing').map((p) => p.priestId);
+const named = new Set([...vbc.conn.db.viewerLabel.iter()].map((l) => l.priestId));
+assert.ok(live.length >= 10 && live.every((id) => named.has(id)), `the livestream knows every live priest's name (${named.size} of ${live.length})`);
+assert.equal(nameOf(vbc, a2i.priestId), 'Alice Liddell', 'including one who keeps her prayers private');
+await store.postPrayer({ sessionId: b.session_id, text: LATIN_PRAYERS[1]!, tokens: 60, tier: 'Subagent' });
+await store.postPrayer({ sessionId: a2.session_id, text: LATIN_PRAYERS[2]!, tokens: 60, tier: 'Subagent' });
+await sleep(300);
+const streamed = (id: bigint) => [...vbc.conn.db.prayerText.iter()].filter((t) => t.priestId === id).length;
+assert.equal(streamed(bi.priestId), 1, "the livestream reads bob's shared prayer");
+assert.equal(streamed(a2i.priestId), 0, "but not alice's, who opted out");
+const ned = { provider: 'google', id: 'g-ned', login: 'Ned', networkChecks: [] as string[], public: false };
+await store.upsertAccount({ ...who(ned), ghLogin: 'Ned', ghName: '', labelMode: 'Username', mutualHashes: [], ...solo });
+const late = await beginAs(ned);
+await sleep(300);
+assert.equal(nameOf(vbc, late.info.priestId), 'Ned', 'and the name of anyone who comes in after it');
+ok('the livestream sees every name, and every shared prayer, but not prayers kept private');
+
 // --- forget ------------------------------------------------------------------------------------
 const before = sql(`SELECT * FROM account WHERE gh_hash = '${keys.ghHash(users.alice.id)}'`);
 assert.match(before, /alice/);
@@ -301,6 +368,20 @@ assert.match(sql(`SELECT * FROM candle WHERE candle_id = ${departing.candleId}`)
 assert.ok(!/0x[0-9a-f]{64}/.test(sql(`SELECT * FROM candle_owner WHERE candle_id = ${departing.candleId}`).split('\n').slice(2).join('\n')), 'candle_owner row is gone');
 ok('deleting the account removes it, its follow edges (both directions) and sessions, and leaves its candles burning');
 
+
+// Networks and public accounts go with their accounts; a network goes with its last member.
+await sessions.forget(who(people.dora).ghHash);
+await sleep(300);
+assert.ok(!sql(`SELECT * FROM network_member WHERE gh_hash = '${who(people.dora).ghHash}'`).split('\n').slice(2).join('').trim(), 'her memberships are gone');
+assert.match(sql('SELECT * FROM network'), new RegExp(workspace), 'the network stays while Ed is in it');
+await sessions.forget(who(people.ed).ghHash);
+await sessions.forget(who(people.fay).ghHash);
+await sleep(300);
+assert.ok(!new RegExp(workspace).test(sql('SELECT * FROM network')), 'and goes with its last member');
+assert.ok(!sql(`SELECT * FROM public_account WHERE gh_hash = '${who(people.fay).ghHash}'`).split('\n').slice(2).join('').trim(), 'the public flag is gone');
+assert.deepEqual([...vs.conn.db.publicLabel.iter()], [], 'and so are her public name and prayers');
+ok('deleting an account removes its networks (and an empty network) and its public flag');
+
 // --- removal after the departure animation --------------------------------------------------------
 console.log(`  … waiting ${C.PRIEST_REMOVE_AFTER_MS / 1000}s for remove_priest`);
 await sleep(C.PRIEST_REMOVE_AFTER_MS + 1500);
@@ -313,7 +394,7 @@ await sleep(300);
 assert.equal([...vb.conn.db.priest.iter()].filter((p) => p.state.tag !== 'Departing').length, 0);
 ok('gate shutdown departs every live priest');
 
-for (const v of [va, vb, vc]) v.conn.disconnect();
+for (const v of [va, vb, vc, vd, vs, vbc]) v.conn.disconnect();
 store.disconnect();
 server.close();
 console.log(`\nAll ${step} integration checks passed against ${URI}/${MODULE}.`);

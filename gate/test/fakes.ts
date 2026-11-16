@@ -50,6 +50,11 @@ export class FakeStore implements Store {
     if (!prev && !a.labelMode) throw new StoreError('consent_required');
     this.accounts.set(a.ghHash, { ...a, labelMode: a.labelMode ?? prev!.labelMode });
   }
+  broadcasters: string[] = [];
+  async setBroadcaster(viewerSub: string) {
+    this.maybeFail();
+    if (!this.broadcasters.includes(viewerSub)) this.broadcasters.push(viewerSub);
+  }
   /** Grant → when it was revoked (seconds). */
   revoked = new Map<string, number>();
   async touchAccount(ghHash: string, grant: string, issuedAtS: number) {

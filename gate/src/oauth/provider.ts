@@ -1,12 +1,13 @@
-// The gate as an OAuth 2.1 authorization server for MCP, delegating sign-in to GitHub.
+// The gate as an OAuth 2.1 authorization server for MCP, delegating sign-in to GitHub, and
+// to Google, Microsoft, Discord and LinkedIn where those are configured (identity.ts).
 //
 // Client registrations, access tokens and refresh tokens are stateless (signed), so a
 // gate restart does not log anyone out. Authorization codes and pending consent screens
 // live in memory for minutes.
 //
-// The gate is a proxy in front of one GitHub OAuth app, with open dynamic registration,
-// so it must not let a client it has never seen ride on that app's standing approval (the
-// "confused deputy" of the MCP security best practices). So:
+// The gate is a proxy in front of its sign-in providers' OAuth apps, with open dynamic
+// registration, so it must not let a client it has never seen ride on those apps' standing
+// approval (the "confused deputy" of the MCP security best practices). So:
 //   - clients may only register loopback http redirect URIs (Claude Code), or https ones
 //     on an explicit allowlist, so codes cannot be delivered to an attacker's server;
 //   - every sign-in by a client this browser has not approved first shows a gate page
@@ -30,8 +31,9 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { randomId, type Claims, type Keys } from '../keys.js';
 import { StoreError, type LabelModeName, type Store } from '../store.js';
-import { cleanDisplayName, validLogin } from '../safety/index.js';
-import { mutualIds, type GitHubApi } from './github.js';
+import { cleanDisplayName } from '../safety/index.js';
+import { githubIdentity, type GitHubApi } from './github.js';
+import type { IdentityProvider, Person, ProviderId } from './identity.js';
 import { authorizePage, consentPage, messagePage, PAGE_HEADERS } from './pages.js';
 import { clearCookie, cookieNames, readCookie, setCookie, type CookieNames } from './cookies.js';
 
@@ -41,7 +43,6 @@ const CODE_TTL_MS = 5 * 60_000;
 const PENDING_TTL_MS = 15 * 60_000;
 const STATE_TTL_S = 10 * 60;
 const MIN_ACCOUNT_AGE_MS = 7 * 86400_000;
-const MAX_FOLLOWS = 5000;
 /** How long the page naming the client stays valid, and how long approvals are remembered. */
 const AUTHZ_TTL_S = 10 * 60;
 const APPROVALS_TTL_S = 90 * 86400;
@@ -64,7 +65,7 @@ export function redirectAllowed(uri: string, allowedOrigins: readonly string[] =
   return u.protocol === 'https:' && allowedOrigins.includes(u.origin);
 }
 
-/** Pending authorization, carried through GitHub in the signed `state`. */
+/** Pending authorization, carried through the sign-in provider in the signed `state`. */
 interface Flow {
   cid: string;
   ru: string;
@@ -72,12 +73,15 @@ interface Flow {
   st?: string;
 }
 
-interface AccountDraft {
+export interface AccountDraft {
+  provider: ProviderId;
   ghHash: string;
   viewerSub: string;
   login: string;
   name: string;
   mutualHashes: string[];
+  networkChecks: string[];
+  public: boolean;
 }
 
 interface CodeEntry {
@@ -93,6 +97,8 @@ export interface OAuthOptions {
   keys: Keys;
   store: Store;
   github: GitHubApi;
+  /** Other ways in, offered after GitHub in this order. */
+  providers?: IdentityProvider[];
   publicUrl: string;
   devSkipAgeCheck?: boolean;
   /** https origins clients may register redirect URIs on, besides loopback http. */
@@ -101,7 +107,8 @@ export interface OAuthOptions {
 
 export class GateOAuthProvider implements OAuthServerProvider {
   readonly resourceUrl: string;
-  private readonly callbackUrl: string;
+  /** Every way in, GitHub first. */
+  private readonly providers = new Map<ProviderId, IdentityProvider>();
   private codes = new Map<string, CodeEntry>();
   private pending = new Map<string, { flow: Flow; draft: AccountDraft; expires: number }>();
   /** Accounts deleted with `forget`: tokens issued before this time are refused. */
@@ -117,9 +124,14 @@ export class GateOAuthProvider implements OAuthServerProvider {
 
   constructor(private readonly o: OAuthOptions) {
     this.resourceUrl = `${o.publicUrl}/mcp`;
-    this.callbackUrl = `${o.publicUrl}/oauth/github/callback`;
+    for (const p of [githubIdentity(o.github), ...(o.providers ?? [])]) this.providers.set(p.id, p);
     this.allowed = o.allowedRedirectOrigins ?? [];
     this.cookies = cookieNames(o.publicUrl);
+  }
+
+  /** Where a provider sends the browser back to. */
+  private callbackUrl(provider: ProviderId): string {
+    return `${this.o.publicUrl}/oauth/${provider}/callback`;
   }
 
   // ---------------------------------------------------------------------------
@@ -199,19 +211,24 @@ export class GateOAuthProvider implements OAuthServerProvider {
       return;
     }
     const flow: Flow = { cid: client.client_id, ru: params.redirectUri, cc: params.codeChallenge, st: params.state };
-    if (await this.approvedHere(res.req, client.client_id)) return this.toGitHub(res, flow);
+    const approved = await this.approvedHere(res.req, client.client_id);
+    // With only one way in there is nothing to choose, so an approved client goes straight there.
+    if (approved && this.providers.size === 1) return this.toProvider(res, flow, 'github');
 
-    // Ask first. The form carries the flow, bound to a nonce held only in this browser's
-    // cookie, so another site cannot submit it on the user's behalf.
+    // Ask first (or, for a client approved before, just which way in). The form carries the
+    // flow, bound to a nonce held only in this browser's cookie, so another site cannot
+    // submit it on the user's behalf.
     const nonce = randomId(24);
     const request = await this.o.keys.sign({ tt: 'authz', ...flow, nh: sha256(nonce) }, { aud: `${this.o.publicUrl}#authz`, ttlSeconds: AUTHZ_TTL_S });
     setCookie(res, this.cookies, this.cookies.authz, nonce, { maxAgeS: AUTHZ_TTL_S, sameSite: 'Strict' });
-    page(res, 200, authorizePage(request, clientLabel(client), destination(params.redirectUri)));
+    const ways = [...this.providers.values()].map((p) => ({ id: p.id, label: p.label }));
+    page(res, 200, authorizePage(request, clientLabel(client), destination(params.redirectUri), ways, approved));
   }
 
-  private async toGitHub(res: Response, flow: Flow) {
-    const state = await this.o.keys.sign({ tt: 'state', ...flow }, { aud: `${this.o.publicUrl}#state`, ttlSeconds: STATE_TTL_S });
-    res.redirect(this.o.github.authorizeUrl(state, this.callbackUrl));
+  private async toProvider(res: Response, flow: Flow, provider: ProviderId) {
+    const way = this.providers.get(provider)!;
+    const state = await this.o.keys.sign({ tt: 'state', ...flow, pv: provider }, { aud: `${this.o.publicUrl}#state`, ttlSeconds: STATE_TTL_S });
+    res.redirect(way.authorizeUrl(state, this.callbackUrl(provider)));
   }
 
   /** The user's answer on the page naming the client. */
@@ -238,8 +255,11 @@ export class GateOAuthProvider implements OAuthServerProvider {
       return page(res, 400, messagePage('Application not allowed', 'This application is not allowed to sign in.'));
     }
     if (req.body?.decision !== 'allow') return res.redirect(clientRedirect(flow.ru, { error: 'access_denied', state: flow.st }));
+    // Pages from before there was a choice send no provider: GitHub.
+    const provider = (typeof req.body?.provider === 'string' ? req.body.provider : 'github') as ProviderId;
+    if (!this.providers.has(provider)) return page(res, 400, messagePage('Sign-in unavailable', 'That way of signing in is not available. Start again from your agent.'));
     await this.rememberApproval(req, res, flow.cid);
-    return this.toGitHub(res, flow);
+    return this.toProvider(res, flow, provider);
   }
 
   /** Has this browser approved this client before (signed cookie)? */
@@ -269,19 +289,40 @@ export class GateOAuthProvider implements OAuthServerProvider {
     return this.o.keys.hmac('approved-client', clientId).slice(0, 24);
   }
 
-  /** Express routes for the page naming the client, the GitHub callback and the consent form. */
+  /** Express routes for the page naming the client, each provider's callback and the consent form. */
   routes(): Router {
     const r = express.Router();
     r.post('/oauth/authorize', express.urlencoded({ extended: false, limit: '8kb' }), (req, res) => void this.authorizeDecision(req, res));
-    r.get('/oauth/github/callback', (req, res) => void this.githubCallback(req.query, res));
+    for (const id of this.providers.keys()) {
+      r.get(`/oauth/${id}/callback`, (req, res) => void this.callback(id, req.query, res));
+    }
     r.post('/oauth/consent', express.urlencoded({ extended: false, limit: '4kb' }), (req, res) => void this.consent(req.body, res));
     return r;
   }
 
-  private async githubCallback(query: Record<string, unknown>, res: Response) {
+  /** What is kept of a person: hashes of their ids and networks, and their cleaned names. */
+  private draftFor(p: Person): AccountDraft {
+    const k = this.o.keys;
+    return {
+      provider: p.provider,
+      ghHash: k.accountHash(p.provider, p.id),
+      viewerSub: k.viewerSubFor(p.provider, p.id),
+      login: p.login,
+      name: cleanDisplayName(p.name),
+      mutualHashes: p.mutualIds.map((id) => k.accountHash(p.provider, id)),
+      networkChecks: p.networks.map((n) => k.networkCheck(n)),
+      public: p.public,
+    };
+  }
+
+  private async callback(provider: ProviderId, query: Record<string, unknown>, res: Response) {
+    const way = this.providers.get(provider)!;
+    const state = String(query.state ?? '');
     let flow: Flow;
     try {
-      const claims = await this.o.keys.verify(String(query.state ?? ''), 'state', `${this.o.publicUrl}#state`);
+      const claims = await this.o.keys.verify(state, 'state', `${this.o.publicUrl}#state`);
+      // States from before there was a choice name no provider: they were GitHub's.
+      if ((claims.pv ?? 'github') !== provider) throw new Error('wrong provider');
       flow = { cid: String(claims.cid), ru: String(claims.ru), cc: String(claims.cc), st: claims.st === undefined ? undefined : String(claims.st) };
     } catch {
       return page(res, 400, messagePage('Sign-in expired', 'This sign-in link is invalid or has expired. Start again from your agent.'));
@@ -292,33 +333,15 @@ export class GateOAuthProvider implements OAuthServerProvider {
 
     let draft: AccountDraft;
     try {
-      const token = await this.o.github.exchangeCode(query.code, this.callbackUrl);
-      try {
-        const user = await this.o.github.user(token);
-        if (!validLogin(user.login)) throw new Error('unexpected login');
-        const age = Date.now() - Date.parse(user.created_at);
-        if (!this.o.devSkipAgeCheck && !(age >= MIN_ACCOUNT_AGE_MS)) {
-          const to = clientRedirect(flow.ru, { error: 'access_denied', state: flow.st });
-          return page(res, 403, messagePage('Account too new', 'GitHub accounts must be at least 7 days old to use /indulgence.', to));
-        }
-        const [following, followers] = await Promise.all([
-          this.o.github.followIds(token, 'following', MAX_FOLLOWS),
-          this.o.github.followIds(token, 'followers', MAX_FOLLOWS),
-        ]);
-        draft = {
-          ghHash: this.o.keys.ghHash(user.id),
-          viewerSub: this.o.keys.viewerSub(user.id),
-          login: user.login,
-          name: cleanDisplayName(user.name),
-          mutualHashes: mutualIds(following, followers).map((id) => this.o.keys.ghHash(id)),
-        };
-      } finally {
-        // The user token is never stored or logged; revoke it now that mutuals are known.
-        void this.o.github.revoke(token).catch(() => {});
+      const person = await way.callback(query, state, this.callbackUrl(provider));
+      if (person.createdAt && !this.o.devSkipAgeCheck && !(Date.now() - person.createdAt.getTime() >= MIN_ACCOUNT_AGE_MS)) {
+        const to = clientRedirect(flow.ru, { error: 'access_denied', state: flow.st });
+        return page(res, 403, messagePage('Account too new', `${way.label} accounts must be at least 7 days old to use /indulgence.`, to));
       }
+      draft = this.draftFor(person);
     } catch {
       const to = clientRedirect(flow.ru, { error: 'server_error', state: flow.st });
-      return page(res, 502, messagePage('Sign-in failed', 'GitHub could not be reached. Try again in a moment.', to));
+      return page(res, 502, messagePage('Sign-in failed', `${way.label} could not be reached, or the sign-in could not be checked. Try again in a moment.`, to));
     }
 
     try {
@@ -328,7 +351,7 @@ export class GateOAuthProvider implements OAuthServerProvider {
       if (e instanceof StoreError && e.code === 'consent_required') {
         const id = randomId(24);
         this.pending.set(id, { flow, draft, expires: Date.now() + PENDING_TTL_MS });
-        return page(res, 200, consentPage(id, draft.login, draft.name));
+        return page(res, 200, consentPage(id, draft));
       }
       const to = clientRedirect(flow.ru, { error: 'temporarily_unavailable', state: flow.st });
       return page(res, 503, messagePage('Cathedral unavailable', 'The cathedral could not be reached. Try again later.', to));

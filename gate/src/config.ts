@@ -18,6 +18,20 @@ export interface GateConfig {
   spacetimedbAudience: string;
   githubClientId: string;
   githubClientSecret: string;
+  /**
+   * Other ways in, each offered only when both its client id and secret are set:
+   * GOOGLE_CLIENT_ID/SECRET, MICROSOFT_CLIENT_ID/SECRET, DISCORD_CLIENT_ID/SECRET,
+   * LINKEDIN_CLIENT_ID/SECRET. Each app's redirect URI is <gate>/oauth/<provider>/callback.
+   */
+  google?: OAuthApp;
+  microsoft?: OAuthApp;
+  discord?: OAuthApp;
+  linkedin?: OAuthApp;
+  /**
+   * The livestream's key (STREAM_KEY, at least 24 characters): the stream page's link carries
+   * it, and the gate trades it for a viewer token that sees every name. Unset: no stream.
+   */
+  streamKey?: string;
   /** Keys every HMAC the gate computes (account and edge hashes, client ids). */
   edgeHmacKey: string;
   /** ES256 private key, PKCS#8 PEM (GATE_SIGNING_KEY, or a file via GATE_SIGNING_KEY_FILE). */
@@ -45,6 +59,20 @@ export interface GateConfig {
   allowedRedirectOrigins: string[];
 }
 
+export interface OAuthApp {
+  clientId: string;
+  clientSecret: string;
+}
+
+/** A provider's app, if both its id and secret are set (half of one is a mistake worth stopping for). */
+function oauthApp(env: NodeJS.ProcessEnv, prefix: string): OAuthApp | undefined {
+  const clientId = env[`${prefix}_CLIENT_ID`];
+  const clientSecret = env[`${prefix}_CLIENT_SECRET`];
+  if (!clientId && !clientSecret) return undefined;
+  if (!clientId || !clientSecret) throw new Error(`Set both ${prefix}_CLIENT_ID and ${prefix}_CLIENT_SECRET, or neither`);
+  return { clientId, clientSecret };
+}
+
 function required(env: NodeJS.ProcessEnv, key: string): string {
   const v = env[key];
   if (!v) throw new Error(`Missing required environment variable ${key}`);
@@ -64,6 +92,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GateConfig {
     throw new Error('GATE_SIGNING_KEY or GATE_SIGNING_KEY_FILE is required in production');
   }
   if (edgeHmacKey.length < 32) throw new Error('EDGE_HMAC_KEY must be at least 32 characters');
+  const streamKey = env.STREAM_KEY || undefined;
+  if (streamKey !== undefined && streamKey.length < 24) throw new Error('STREAM_KEY must be at least 24 characters');
   return {
     publicUrl,
     siteUrl: stripSlash(required(env, 'SITE_URL')),
@@ -74,6 +104,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GateConfig {
     spacetimedbAudience: env.SPACETIMEDB_AUDIENCE ?? module,
     githubClientId: required(env, 'GITHUB_CLIENT_ID'),
     githubClientSecret: required(env, 'GITHUB_CLIENT_SECRET'),
+    google: oauthApp(env, 'GOOGLE'),
+    microsoft: oauthApp(env, 'MICROSOFT'),
+    discord: oauthApp(env, 'DISCORD'),
+    linkedin: oauthApp(env, 'LINKEDIN'),
+    streamKey,
     edgeHmacKey,
     signingKeyPem:
       env.GATE_SIGNING_KEY?.replace(/\\n/g, '\n') ||

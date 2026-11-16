@@ -83,6 +83,29 @@ export class Keys {
     return `v.${this.hmac('viewer', String(githubId)).slice(0, 32)}`;
   }
 
+  /**
+   * Account hash for an id at any provider. GitHub's is `ghHash`, unchanged, so existing
+   * accounts and follow edges keep theirs; every other provider has its own label, so ids
+   * at different providers can never collide.
+   */
+  accountHash(provider: string, id: string): string {
+    return provider === 'github' ? this.ghHash(id) : this.hmac(`account:${provider}`, id).slice(0, 32);
+  }
+
+  /** Viewer subject for an id at any provider; GitHub's is `viewerSub`, unchanged. */
+  viewerSubFor(provider: string, id: string): string {
+    return provider === 'github' ? this.viewerSub(id) : `v.${this.hmac(`viewer:${provider}`, id).slice(0, 32)}`;
+  }
+
+  /**
+   * What the database keeps of a network (`kind:value`, such as a Workspace domain): a hash
+   * keyed with our secret, so nobody holding the database alone can tell which it is, even
+   * by hashing likely names.
+   */
+  networkCheck(network: string): string {
+    return this.hmac('network', network).slice(0, 32);
+  }
+
   async sign(claims: Claims, opts: { aud: string; sub?: string; ttlSeconds?: number }): Promise<string> {
     let jwt = new SignJWT(claims)
       .setProtectedHeader({ alg: 'ES256', kid: this.kid, typ: 'JWT' })
