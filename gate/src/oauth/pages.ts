@@ -2,6 +2,7 @@
 // for access, the one-time consent screen, and messages. Every interpolated value is escaped.
 
 import type { ProviderId } from './identity.js';
+import { LOGOS } from './logos.js';
 
 export const DISCLAIMERS: [string, string][] = [
   ['Satire.', 'Not affiliated with or endorsed by any church. No spiritual effect is claimed: indulgences sold here grant no remission of anything.'],
@@ -63,6 +64,13 @@ h1{font-size:28px;margin:0 0 4px;color:var(--accent);font-variant:small-caps;let
 form{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
 button{font:inherit;padding:10px 16px;border-radius:4px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--card)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+form.ways{flex-direction:column;flex-wrap:nowrap;max-width:320px}
+button.way{display:flex;align-items:center;gap:12px;text-align:left}
+button.way:hover{border-color:var(--accent)}
+.logo{flex:none}
+button.quiet{padding:6px 0;border-color:transparent;background:none;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+button.quiet:hover{color:var(--fg)}
 footer{margin-top:28px;font-size:13px;color:var(--muted)}
 footer p{margin:6px 0}
 </style></head><body><main>${body}
@@ -77,16 +85,16 @@ footer p{margin:6px 0}
  */
 export function authorizePage(request: string, client: string, destination: string, ways: { id: ProviderId; label: string }[], approved = false): string {
   const buttons = ways
-    .map((w, i) => `<button${i === 0 ? ' class="primary"' : ''} name="provider" value="${escapeHtml(w.id)}">Continue with ${escapeHtml(w.label)}</button>`)
+    .map((w) => `<button class="way" name="provider" value="${escapeHtml(w.id)}">${LOGOS[w.id]}<span>Continue with ${escapeHtml(w.label)}</span></button>`)
     .join('\n');
-  const form = `<form method="post" action="/oauth/authorize">
+  const form = `<form class="ways" method="post" action="/oauth/authorize">
 <input type="hidden" name="request" value="${escapeHtml(request)}">
 <input type="hidden" name="decision" value="allow">
 ${buttons}
 </form>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="request" value="${escapeHtml(request)}">
-<button name="decision" value="deny">Cancel</button>
+<button class="quiet" name="decision" value="deny">Cancel</button>
 </form>`;
   if (approved) {
     return shell('/indulgence', `<h1>/indulgence</h1><p class="sub">Sign in for <b>${escapeHtml(client)}</b></p>\n<div class="card"><p>Choose how to sign in.</p>\n${form}</div>`);

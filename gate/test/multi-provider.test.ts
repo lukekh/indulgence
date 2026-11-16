@@ -143,7 +143,7 @@ async function consent(html: string, choice: string) {
 describe('more than one way in', () => {
   it('offers every configured provider, GitHub first', async () => {
     const page = await open(await register());
-    const offered = [...page.html.matchAll(/name="provider" value="([a-z]+)">Continue with ([A-Za-z]+)</g)].map((m) => `${m[1]}:${m[2]}`);
+    const offered = [...page.html.matchAll(/name="provider" value="([a-z]+)"><svg[^]*?<\/svg><span>Continue with ([A-Za-z]+)</g)].map((m) => `${m[1]}:${m[2]}`);
     expect(offered).toEqual(['github:GitHub', 'google:Google', 'linkedin:LinkedIn']);
     expect(page.html).toContain('wants to act as you');
   });
