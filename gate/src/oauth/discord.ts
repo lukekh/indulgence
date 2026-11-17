@@ -11,7 +11,8 @@ import { FALLBACK_LOGIN } from './oidc.js';
 export const DISCORD_MAX_SERVER_MEMBERS = 200;
 /** At most this many servers count, as the module allows. */
 const MAX_NETWORKS = 200;
-const API = 'https://discord.com/api';
+/** Pinned: without a version, Discord serves its oldest, deprecated one. */
+const API = 'https://discord.com/api/v10';
 
 /** Discord usernames: 2–32 of lower-case letters, digits, `_` and `.`. */
 const USERNAME = /^[a-z0-9_.]{2,32}$/;
