@@ -259,7 +259,7 @@ See [`docs/deploying.md`](docs/deploying.md), which also covers the other ways t
 
 ## More
 
-- **Tests:** `npm test` runs the gate, web and OpenCode plugin tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 23 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 19, gate 132, web 106, OpenCode plugin 3.
+- **Tests:** `npm test` runs the gate, web and OpenCode plugin tests. `(cd module && cargo test)` runs the module's, and `(cd gate && npm run test:stdb)` runs 23 checks against a real SpacetimeDB (setup is in the header of `gate/test-integration/stdb.it.ts`). Counts at the time of writing: module 19, gate 134, web 106, OpenCode plugin 3.
 - **Layout:** [`module/`](module) (SpacetimeDB module, Rust), [`gate/`](gate) (MCP server, OAuth, TypeScript on Node 22), [`web/`](web) (viewer, Vite and Canvas), [`plugin/`](plugin), [`codex-plugin/`](codex-plugin), [`antigravity-plugin/`](antigravity-plugin) and [`opencode-plugin/`](opencode-plugin) (the plugins), [`shared/`](shared) (constants and canned prayers, shared by all three runtimes), [`demo/`](demo) (the scripted demo and asset renderer). `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json` make the repo a marketplace for Claude Code and Codex.
 - **How it looks:** [`docs/the-look.md`](docs/the-look.md). Sheets of every asset are rendered with `npm run assets` into `demo/out/assets/`.
 - **The design and where this differs from it:** [`indulgence — Technical Spec.md`](indulgence%20—%20Technical%20Spec.md) and [`docs/spec-notes.md`](docs/spec-notes.md).

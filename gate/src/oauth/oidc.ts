@@ -1,8 +1,8 @@
 // Google, Microsoft and LinkedIn: OpenID Connect sign-in with the authorization code flow.
 // Only the ID token is used. It is checked against the provider's published keys, its
 // audience (our client id), its issuer and a nonce derived from our signed state, so a token
-// minted for another app or another sign-in is refused. No access token is kept, and no API
-// is called with it.
+// minted for another app or another sign-in is refused. (LinkedIn leaves the nonce out; see
+// `omitsNonce`.) No access token is kept, and no API is called with it.
 //
 // Scopes are `openid profile` only: names, never email addresses. The network comes from the
 // ID token itself: Google's `hd` (the Workspace domain) and Microsoft's `tid` (the tenant).
@@ -31,6 +31,12 @@ export interface OidcSpec {
   /** Who the claims describe: the networks they are in, and whether they are public. */
   networks(claims: JWTPayload): string[];
   public: boolean;
+  /**
+   * The provider leaves the nonce out of its ID tokens (LinkedIn does). Its tokens are still
+   * accepted without one: they come straight from its token endpoint in exchange for our
+   * client secret, so none can be slipped in from elsewhere. A nonce that is present must match.
+   */
+  omitsNonce?: boolean;
 }
 
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
@@ -78,6 +84,7 @@ export const LINKEDIN: OidcSpec = {
   // LinkedIn will not share connections, so instead everyone sees these priests.
   networks: () => [],
   public: true,
+  omitsNonce: true,
 };
 
 /** The nonce for a sign-in: bound to our signed state, so it needs no storage. */
@@ -132,12 +139,16 @@ export class OidcProvider implements IdentityProvider {
       }),
       signal: AbortSignal.timeout(15_000),
     });
-    const body = (await res.json().catch(() => ({}))) as { id_token?: unknown };
-    if (!res.ok || typeof body.id_token !== 'string') throw new Error(`${this.id} code exchange failed`);
+    const body = (await res.json().catch(() => ({}))) as { id_token?: unknown; error?: unknown };
+    if (!res.ok || typeof body.id_token !== 'string') {
+      // The provider's error code (such as `invalid_client`) says why; it holds no secret.
+      throw new Error(`${this.id} code exchange failed: ${res.status} ${str(body.error)?.slice(0, 60) ?? ''}`.trim());
+    }
 
     const { payload } = await jwtVerify(body.id_token, this.jwks, { audience: this.clientId, algorithms: ['RS256'] });
     if (typeof payload.iss !== 'string' || !this.spec.issuerOk(payload.iss, payload)) throw new Error(`${this.id} issuer`);
-    if (payload.nonce !== nonceFor(state)) throw new Error(`${this.id} nonce`);
+    const nonceMissingAsUsual = payload.nonce === undefined && this.spec.omitsNonce;
+    if (payload.nonce !== nonceFor(state) && !nonceMissingAsUsual) throw new Error(`${this.id} nonce`);
     if (typeof payload.sub !== 'string' || !payload.sub) throw new Error(`${this.id} subject`);
 
     return {
