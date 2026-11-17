@@ -133,6 +133,7 @@ describe('Discord sign-in', () => {
     expect(p.createdAt!.getUTCFullYear()).toBe(2016);
     await new Promise((r) => setTimeout(r, 0));
     expect(d.calls.some((u) => u.endsWith('/oauth2/token/revoke'))).toBe(true);
+    expect(d.calls.every((u) => u.startsWith('https://discord.com/api/v10/'))).toBe(true);
   });
 
   it('reads the time from a snowflake', () => {
