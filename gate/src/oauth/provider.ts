@@ -339,7 +339,9 @@ export class GateOAuthProvider implements OAuthServerProvider {
         return page(res, 403, messagePage('Account too new', `${way.label} accounts must be at least 7 days old to use /indulgence.`, to));
       }
       draft = this.draftFor(person);
-    } catch {
+    } catch (e) {
+      // Why, for the operator: the reasons name a check or a provider's error code, never a token.
+      console.warn(`[oauth] ${provider} sign-in failed: ${e instanceof Error ? e.message : String(e)}`);
       const to = clientRedirect(flow.ru, { error: 'server_error', state: flow.st });
       return page(res, 502, messagePage('Sign-in failed', `${way.label} could not be reached, or the sign-in could not be checked. Try again in a moment.`, to));
     }

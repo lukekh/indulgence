@@ -70,8 +70,22 @@ describe('OpenID Connect sign-in', () => {
   });
 
   it('LinkedIn: no network, so public', async () => {
-    const li = oidc(LINKEDIN, () => idToken({ iss: 'https://www.linkedin.com/oauth', sub: 'l-1', name: 'Mary Somerville', given_name: 'Mary' }));
+    // As LinkedIn sends them: with no nonce.
+    const li = oidc(LINKEDIN, () => idToken({ iss: 'https://www.linkedin.com/oauth', sub: 'l-1', name: 'Mary Somerville', given_name: 'Mary', nonce: undefined }));
     expect(await li.provider.callback({ code: 'c' }, STATE, REDIRECT)).toMatchObject({ provider: 'linkedin', login: 'Mary', networks: [], public: true });
+  });
+
+  it('lets only LinkedIn leave the nonce out, and refuses a wrong one from anyone', async () => {
+    const google = oidc(GOOGLE, () => idToken({ iss: 'https://accounts.google.com', sub: 's', name: 'A', nonce: undefined }));
+    await expect(google.provider.callback({ code: 'c' }, STATE, REDIRECT)).rejects.toThrow(/nonce/);
+    const li = oidc(LINKEDIN, () => idToken({ iss: 'https://www.linkedin.com/oauth', sub: 'l-1', name: 'M', nonce: nonceFor('another-state') }));
+    await expect(li.provider.callback({ code: 'c' }, STATE, REDIRECT)).rejects.toThrow(/nonce/);
+  });
+
+  it('says why a code exchange failed, by the provider’s error code', async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ error: 'invalid_client', error_description: 'secret' }), { status: 401 })) as typeof fetch;
+    const p = new OidcProvider(LINKEDIN, 'client-1', 'secret-1', { jwks, fetch: fetchImpl });
+    await expect(p.callback({ code: 'c' }, STATE, REDIRECT)).rejects.toThrow('linkedin code exchange failed: 401 invalid_client');
   });
 
   it('refuses a token for another sign-in, another app or another issuer, or not signed by the provider', async () => {
